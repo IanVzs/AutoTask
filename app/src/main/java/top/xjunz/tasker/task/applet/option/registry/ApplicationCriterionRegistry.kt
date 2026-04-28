@@ -105,7 +105,7 @@ class ApplicationCriterionRegistry(id: Int) : AppletOptionRegistry(id) {
     @AppletOrdinal(0x01_00)
     private val isSystem = invertibleApplicationOption(R.string.is_system_app) {
         propertyCriterion<ComponentInfoWrapper> {
-            it.packageInfo.applicationInfo.flags and
+            requireNotNull(it.packageInfo.applicationInfo).flags and
                     (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
         }
     }

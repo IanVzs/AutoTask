@@ -28,8 +28,13 @@ class PackageInfoWrapper(val source: PackageInfo) {
 
     var selectedActCount: Int = 0
 
+    val applicationInfo: ApplicationInfo
+        get() = requireNotNull(source.applicationInfo) {
+            "Package $packageName has no applicationInfo"
+        }
+
     val label: CharSequence by lazy {
-        source.applicationInfo.loadLabel(ContextBridge.getContext().packageManager)
+        applicationInfo.loadLabel(ContextBridge.getContext().packageManager)
     }
 
     var packageName: String = source.packageName
@@ -38,13 +43,13 @@ class PackageInfoWrapper(val source: PackageInfo) {
         app.packageManager.getLaunchIntentForPackage(source.packageName)?.component?.className
     }
 
-    fun isSystemApp() = source.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0 ||
-            source.applicationInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
+    fun isSystemApp() = applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0 ||
+            applicationInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP != 0
 
     private var suspicion = -1L
 
     val apkSize by lazy {
-        File(source.applicationInfo.sourceDir).length()
+        File(applicationInfo.sourceDir).length()
     }
 
     /**

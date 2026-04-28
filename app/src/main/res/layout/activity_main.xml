@@ -42,11 +42,25 @@
                     android:textAppearance="@style/TextAppearance.Material3.ActionBar.Title"
                     app:drawableTint="?colorPrimary"
                     app:layout_constraintBottom_toBottomOf="parent"
-                    app:layout_constraintEnd_toStartOf="@+id/btn_service_control"
+                    app:layout_constraintEnd_toStartOf="@+id/btn_voice_command"
                     app:layout_constraintHorizontal_bias="0.0"
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toTopOf="parent"
                     tools:drawableEndCompat="@drawable/ic_verified_24px" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_voice_command"
+                    style="@style/Widget.Material3.Button.Icon"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:contentDescription="@string/voice_command"
+                    app:backgroundTint="?colorPrimaryContainer"
+                    app:icon="@drawable/ic_mic_24px"
+                    app:iconTint="?colorOnPrimaryContainer"
+                    app:layout_constraintBottom_toBottomOf="parent"
+                    app:layout_constraintEnd_toStartOf="@+id/btn_service_control"
+                    app:layout_constraintTop_toTopOf="parent"
+                    app:rippleColor="?colorControlHighlight" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btn_service_control"

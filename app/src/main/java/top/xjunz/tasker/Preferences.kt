@@ -37,6 +37,21 @@ object Preferences {
 
     var recordedVersionCode by global.primitive("recorded_version_code", -1)
 
+    var speechRecognitionService by global.primitive("speech_recognition_service", 0)
+
+    var speechRecognitionAppKey by global.nullable<String>("speech_recognition_app_key", null)
+
+    var speechRecognitionAccessKeyId by global.nullable<String>("speech_recognition_access_key_id", null)
+
+    var speechRecognitionAccessKeySecret by global.nullable<String>(
+        "speech_recognition_access_key_secret",
+        null
+    )
+
+    var speechRecognitionToken by global.nullable<String>("speech_recognition_token", null)
+
+    var speechRecognitionTokenExpireTime by global.primitive("speech_recognition_token_expire_time", 0L)
+
     private fun <T> SharedPreferences.nullable(
         name: String,
         defValue: T?

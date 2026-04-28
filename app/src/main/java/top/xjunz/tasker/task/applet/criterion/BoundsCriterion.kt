@@ -14,7 +14,7 @@ import top.xjunz.tasker.task.applet.value.Distance
  */
 class BoundsCriterion<T : Any>(
     val direction: Int,
-    private inline val bounds: (target: T, scope: Int, unit: Int) -> Float
+    private val bounds: (target: T, scope: Int, unit: Int) -> Float
 ) : Criterion<T, Distance>() {
 
     override fun matchTarget(target: T, value: Distance): AppletResult {

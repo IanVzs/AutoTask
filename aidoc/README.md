@@ -49,6 +49,8 @@
 - 改动 **Applet id 映射 / 序列化格式** ⇒ 更新 `03-engine-applet-model.md` 与 `06-runtime-and-events.md` 的 Storage 章节。
 - 引入 **新 Bridge / 新事件分发器** ⇒ 更新 `02-architecture.md` 的依赖图与 `06`。
 - 引入 **新依赖库** ⇒ 更新 `08-build-config-premium.md`。
+- 改动 **反馈 & 交流** 的邮箱、QQ群、邮件模板或菜单入口 ⇒ 更新 `07-ui-architecture.md` 的"关于页与反馈交流"章节。
+- 改动 **语音指令** 的入口、AppKey / AccessKey / Token 配置、权限、识别服务、匹配策略或执行规则 ⇒ 更新 `07-ui-architecture.md` 的"语音指令入口"章节。
 - 发现 **新坑点 / 复现 bug** ⇒ 进 `10-troubleshooting.md` 积累。
 
 保持每篇文档**自包含 + 互相交叉引用**，不要让 AI 反复跳读源码。

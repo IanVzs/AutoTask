@@ -26,7 +26,7 @@ class ApplicationIconLoader {
         val cached = cache.get(info.packageName)
         if (cached == null) {
             val icon = runCatching {
-                Icons.loadIcon(info.source.applicationInfo)
+                Icons.loadIcon(info.applicationInfo)
             }.getOrNull() ?: return null
             cache.put(info.packageName, icon)
             return icon

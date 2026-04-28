@@ -11,7 +11,7 @@ import top.xjunz.tasker.task.applet.util.NumberRangeUtil
 /**
  * @author xjunz 2022/08/14
  */
-class NumberRangeCriterion<R : Any, T : Number>(private inline val mapper: (R) -> T) :
+class NumberRangeCriterion<R : Any, T : Number>(private val mapper: (R) -> T) :
     Criterion<R, List<T>>() {
 
     companion object {

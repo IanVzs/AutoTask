@@ -30,6 +30,69 @@
 
 **跨 Fragment 共享**：`MainViewModel` 承担事件总线（服务状态、对话框栈、导入分享）。
 
+### 2.1 关于页与反馈交流
+
+`AboutFragment` 渲染底部导航的"关于"页，选项列表来自 `MainOption.ALL_OPTIONS`。其中"反馈 & 交流"对应 `MainOption.Feedback`，点击后弹出 `res/menu/feedbacks.xml` 菜单：
+
+- `item_feedback_group`：调用 `Feedbacks.addGroup()`，通过 `mqqapi://card/show_pslcard?...uin=258644994...` 打开 QQ 群名片。
+- `item_feedback_email`：调用 `Feedbacks.feedbackByEmail(null)`，拉起邮件客户端，收件人为 `webackup.feedback@gmail.com`。
+
+反馈邮件正文由 `util/Feedbacks.kt` 的 `dumpEnvInfo()` 生成环境信息，包含版本号、Android 版本、品牌型号、ABI、Shizuku binder / 版本 / uid。邮件标题和正文模板在 `res/values/strings.xml` 的 `mail_subject`、`mail_body`。
+
+崩溃反馈复用同一套能力：
+
+- `GlobalCrashHandler` 捕获异常后写入 crash log，并进入 `CrashReportActivity`。
+- `CrashReportActivity` 的"反馈"按钮可发送带附件的邮件；"加群"按钮仍走 `Feedbacks.addGroup()`。
+- 通用错误弹窗 `showErrorDialog()` 会调用 `Feedbacks.feedbackErrorByEmail(stackTrace)`。
+
+修改"反馈 & 交流"信息时同步检查：
+
+- QQ 群入口是**代码写死**的，不在配置文件里：改 `util/Feedbacks.kt` 的 `addGroup()`，替换 `mqqapi://card/show_pslcard?...uin=258644994...` 中的 QQ 群号或整段 URL。改完需要重新打包安装。
+- 反馈邮箱是**代码写死**的，不在配置文件里：改 `util/Feedbacks.kt` 的 `feedbackByEmail()` 与 `feedbackErrorByEmail()`，替换 `Intent.EXTRA_EMAIL` 里的 `webackup.feedback@gmail.com`。两处都要改，否则普通反馈和错误反馈会发到不同邮箱。改完需要重新打包安装。
+- 邮件标题 / 正文模板是**Android 资源配置**：改 `res/values/strings.xml` 的 `mail_subject`、`mail_body`。这里只控制邮件标题文字和正文模板，不控制收件邮箱。改完需要重新打包安装。
+- "反馈 & 交流"入口名称、"加群"、"邮件"这些菜单文案是**Android 资源配置**：改 `res/values/strings.xml` 的 `feedback_and_communicate`、`feedback_group`、`feedback_email`。改完需要重新打包安装。
+- 菜单里有哪些项是**XML 菜单配置**：改 `res/menu/feedbacks.xml`。如果新增菜单项，还要同步改 `AboutFragment.onOptionClicked()` 中 `MainOption.Feedback` 分支的点击处理。改完需要重新打包安装。
+
+### 2.2 语音指令入口
+
+第一版语音指令只做**应用内手动启动监听**：用户点击主界面标题栏的麦克风按钮后，启动 `voice/VoiceCommandService` 前台服务；服务会在通知栏常驻，用户可点通知里的"停止语音监听"随时关闭。没有做后台热词唤醒，也不会在 App 启动时自动监听。
+
+入口与权限：
+
+- UI 入口：`res/layout/activity_main.xml` 的 `btn_voice_command`，点击处理在 `ui/main/MainActivity.kt` 的 `requestStartVoiceCommandService()`。
+- 阿里云配置入口：关于/设置页的"语音识别 AppKey"、"阿里云 AccessKey ID"、"阿里云 AccessKey Secret"和"语音识别 Token"，由 `ui/main/MainOption.kt` 注册，点击处理在 `ui/main/AboutFragment.kt`。配置值保存在 `Preferences.speechRecognitionAppKey`、`Preferences.speechRecognitionAccessKeyId`、`Preferences.speechRecognitionAccessKeySecret` 和 `Preferences.speechRecognitionToken`，底层是本机 `SharedPreferences`，不是写死在代码或打包资源里；用户可在 App 内修改或清空。
+- 麦克风权限：`AndroidManifest.xml` 的 `RECORD_AUDIO`，运行时由 `MainActivity` 请求。
+- 通知权限：`AndroidManifest.xml` 的 `POST_NOTIFICATIONS`，Android 13+ 运行时由 `MainActivity` 请求；没有通知权限时不启动语音监听，因为用户无法从通知栏关闭。
+- 前台服务权限：`AndroidManifest.xml` 的 `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MICROPHONE`；`VoiceCommandService` 声明 `foregroundServiceType="microphone"`。
+
+识别与执行：
+
+- 语音识别服务：`voice/VoiceCommandService.kt` 目前使用 Android 系统 `SpeechRecognizer`。实际识别能力由手机系统中安装的语音识别服务提供，不是项目内自带模型；系统识别不读取 AppKey / AccessKey / Token。后续接入阿里云等云识别服务时，应从 `Preferences` 读取用户在 App 内配置的信息，不要硬编码。
+- 命令解析：`voice/VoiceCommandParser.kt` 支持 `执行`、`运行`、`启动`、`打开`、`开始` 前缀；没有前缀时把整句话当任务名。
+- 任务匹配：`VoiceCommandService.findTask()` 先按任务标题精确匹配，再做去空白/标点后的包含匹配；匹配到多个任务时不会执行，会提示用户说完整任务名。
+- 任务执行：当前只支持一次性任务（`XTask.TYPE_ONESHOT`）。匹配到一次性任务后复用现有入口：`LocalTaskManager.addOneshotTaskIfAbsent(task)` + `currentService.scheduleOneshotTask(...)`。匹配到常驻任务时只提示，不直接启用或运行。
+- 结果展示：识别文本、匹配到的任务、执行中、完成/失败都会用 toast 和前台通知文本反馈。
+
+阿里云 ASR 的 `AppKey` 与 `Token` 获取：
+
+- 本 App 是免费分发的工具，不提供作者账号下的付费云识别服务，也不会内置共享 `AppKey`、`AccessKey`、`Token` 或云服务额度。使用阿里云 ASR 时，使用者需要自行开通 / 购买阿里云智能语音交互服务，并在 App 设置页填写自己的服务信息。
+- 先在阿里云开通"智能语音交互"服务，进入 [智能语音交互控制台](https://nls-portal.console.aliyun.com/applist) 创建项目 / 应用。项目列表或项目详情里显示的 `AppKey` 就是 Android SDK 初始化和识别参数里的 `app_key`。
+- `AccessKey ID` / `AccessKey Secret` 用于向阿里云换取短期 `Token`。这里允许使用者在自己手机上的 App 设置页填写自己的 AccessKey，类似用户在客户端填写自己的账号密码；它不是作者内置到 APK 的密钥，也不应该由作者提供给所有用户共享。
+- 如果使用者不想在 App 内保存 `AccessKey Secret`，也可以只手动填写 `AppKey` 和 `Token`。测试时可在阿里云控制台临时获取 Token；官方说明控制台获取的 Token 有效期为 24 小时，过期后需要重新获取并在 App 内更新。
+- 如果后续实现自动刷新 Token，可由 App 使用本机保存的 `AccessKey ID` / `AccessKey Secret` 调阿里云 SDK 或 OpenAPI 获取 Token，并保存到 `Preferences.speechRecognitionToken`。如果使用者有自己的服务端，也可以改为让 App 请求使用者自己的服务端，由服务端换 Token 后下发。
+- 通过 SDK 或 OpenAPI 获取的 Token 会返回 `ExpireTime`，这是秒级时间戳；App 或服务端应在过期前刷新。重新获取 Token 不会让旧 Token 立即失效，旧 Token 是否可用只取决于它自己的有效期。
+- `AppKey`、生成 Token 使用的 `AccessKey`、以及阿里云账号 / RAM 子账号权限必须属于同一账号体系；如果混用不同账号的 `AppKey` 和 Token，阿里云会返回 `APPKEY_UID_MISMATCH`、`Appkey not exist`、`403 Forbidden` 或 Token 无效/过期等错误。
+- 使用 RAM 子账号时，需要给子账号授予智能语音交互相关权限，例如 `AliyunNLSFullAccess`。如果获取 Token 时报无权限，先检查 RAM 授权和 AccessKey 是否正确。
+- 当前 App 里已经有"语音识别 AppKey"、"阿里云 AccessKey ID"、"阿里云 AccessKey Secret"和"语音识别 Token"本机配置项。后续真正接入阿里云 ASR 时，让识别代码读取 `Preferences` 中的这些配置；不要内置作者账号，也不要把任意用户的密钥同步到作者服务器。
+
+修改语音指令行为时同步检查：
+
+- 改识别前缀 / 指令语法：`voice/VoiceCommandParser.kt`。
+- 改匹配策略 / 支持常驻任务：`voice/VoiceCommandService.kt` 的 `findTask()`、`launchTask()`。
+- 改 AppKey / AccessKey / Token 保存位置或配置项说明：`Preferences.kt`、`MainOption.kt`、`AboutFragment.kt`、`res/values/strings.xml`。
+- 改入口按钮位置或图标：`res/layout/activity_main.xml`、`res/drawable/ic_mic_24px.xml`。
+- 改通知标题、权限提示、执行提示：`res/values/strings.xml` 中 `voice_command*` 和 `format_voice_command_*` 字符串。
+
 ## 3. 任务编辑器（`ui/task/editor/`）
 
 这是整个应用最复杂的 UI 子系统。

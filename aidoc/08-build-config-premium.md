@@ -143,6 +143,26 @@ debug 构建 `versionName` 自动后缀 `-debug`。
 
 HTTPS 用 `ktor-client-cio`；没有自定义 TrustManager / SSL pinning。
 
+### 8.1 更新检查逻辑
+
+更新检查是**手动触发**的：打开设置/关于页里的“版本信息”对话框，点击“检查更新”按钮后，`VersionInfoDialog` 调用 `MainViewModel.checkForUpdates()`。不要在 `MainActivity.onCreate()` 中自动调用 `checkForUpdates()`，否则 App 启动后会在 `app.updateInfo` 返回新版本时立即弹出“检测到新版本！”。
+
+调用链：
+
+1. `ui/main/VersionInfoDialog.kt`：按钮点击入口；无缓存时调用 `MainViewModel.checkForUpdates()`，已有新版本缓存时设置 `showUpdateDialog = true` 并刷新 `app.updateInfo`。
+2. `ui/main/MainViewModel.kt`：请求 `Client.checkForUpdates()`，HTTP 200 后将响应 JSON 解析为 `UpdateInfo`，写入 `app.updateInfo`。
+3. `api/UpdateInfo.kt`：`hasUpdates()` 使用服务端返回的 `build` 与当前 `BuildConfig.VERSION_CODE` 比较，`build > versionCode` 即视为有新版本。
+4. `ui/main/MainActivity.kt`：观察 `app.updateInfo`；当 `hasUpdates()` 且 `showUpdateDialog == true` 时弹出更新对话框。
+
+修改检测和下载 URL 时注意：
+
+- 检测接口是**代码写死**的，不在配置文件里：改 `api/Client.kt` 的 `checkForUpdates()`。当前请求 `https://api.bq04.com/apps/latest/6404da310d81cc43daf6b431`，并附带 `api_token=5823a317109145ad2d9257d8c81cb641` 参数。改完需要重新打包安装。
+- 如果只是换同平台应用 id / token，只改 `Client.kt` 里的 URL 和 `api_token` 即可。
+- 如果换成另一个更新服务接口，不只改 URL：还要同步改 `api/UpdateInfo.kt` 的 `@Serializable data class UpdateInfo` 字段，让它匹配新接口返回 JSON；同时确认 `hasUpdates()` 仍然能用某个服务端版本字段和 `BuildConfig.VERSION_CODE` 比较。
+- 新版本判断也是**代码逻辑**：`UpdateInfo.hasUpdates()` 当前使用 `build.toIntOrNull() > BuildConfig.VERSION_CODE`。如果新接口不叫 `build`，或版本格式不是纯数字，要在这里改判断逻辑。
+- 下载入口也是**代码写死**的，不在配置文件里：改 `ui/main/MainActivity.kt` 中更新弹窗 positive button 的 `viewUrlSafely("https://spark.appc02.com/tasker")`。当前不会使用接口返回的下载地址，永远打开这个固定网页。改完需要重新打包安装。
+- 如果希望下载按钮使用接口返回地址，需要把 `MainActivity.kt` 的固定 URL 改为读取当前 `UpdateInfo`，例如在观察 `app.updateInfo` 时使用 `it.install_url` / `it.installUrl` / `it.direct_install_url`。选择哪个字段前先确认目标地址适合浏览器打开还是适合系统安装器直接下载。
+
 ## 9. `ssl` 模块（名字误导：实际是 AES）
 
 - JNI 库 `libssl.so`（CMake 构建；源码 `ssl/src/main/cpp/{apkprotect,md5,aes,base64}.cpp`）

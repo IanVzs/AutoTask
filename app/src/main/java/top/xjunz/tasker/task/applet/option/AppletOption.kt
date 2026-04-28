@@ -31,7 +31,7 @@ class AppletOption(
     val registryId: Int,
     private val titleResource: Int,
     private val invertedTitleRes: Int,
-    private inline val rawCreateApplet: () -> Applet
+    private val rawCreateApplet: () -> Applet
 ) : Comparable<AppletOption> {
 
     companion object {

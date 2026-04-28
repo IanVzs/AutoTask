@@ -5,6 +5,7 @@ pluginManagement {
         mavenCentral()
     }
 }
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -12,11 +13,15 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
+
 rootProject.name = "自动任务"
-include ':app'
-include ':hidden-apis'
-include ':ui-automator'
-include ':tasker-engine'
-include ':shared-library'
-include ':coroutine-ui-automator'
-include ':ssl'
+
+include(
+    ":app",
+    ":hidden-apis",
+    ":ui-automator",
+    ":tasker-engine",
+    ":shared-library",
+    ":coroutine-ui-automator",
+    ":ssl",
+)

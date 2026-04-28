@@ -4,9 +4,12 @@
 
 package top.xjunz.tasker.ui.main
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.DialogInterface
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.*
 import androidx.activity.result.ActivityResultLauncher
@@ -15,6 +18,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.coordinatorlayout.widget.CoordinatorLayout
+import androidx.core.content.ContextCompat
 import androidx.core.view.*
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -56,6 +60,7 @@ import top.xjunz.tasker.ui.task.showcase.*
 import top.xjunz.tasker.util.ClickListenerUtil.setNoDoubleClickListener
 import top.xjunz.tasker.util.ClickListenerUtil.setOnDoubleClickListener
 import top.xjunz.tasker.util.ShizukuUtil
+import top.xjunz.tasker.voice.VoiceCommandService
 import java.io.File
 import java.util.*
 import java.util.concurrent.TimeoutException
@@ -111,6 +116,8 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
 
     private lateinit var saveToSAFLauncher: ActivityResultLauncher<Intent>
 
+    private lateinit var voiceCommandPermissionLauncher: ActivityResultLauncher<Array<String>>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val lightTheme = resources.getBoolean(R.bool.lightTheme)
@@ -130,6 +137,16 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
             registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
                 currentOperatingFile?.delete()
             }
+        voiceCommandPermissionLauncher =
+            registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+                if (requiredVoiceCommandPermissions().all {
+                        ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+                    }) {
+                    startVoiceCommandService()
+                } else {
+                    toast(R.string.voice_command_permission_denied)
+                }
+            }
         app.setAppTheme(theme)
         setContentView(binding.root)
         initViews()
@@ -139,7 +156,6 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
         if (!Preferences.privacyPolicyAcknowledged) {
             PrivacyPolicyDialog().show(supportFragmentManager)
         }
-        mainViewModel.checkForUpdates()
         if (intent.action == Intent.ACTION_VIEW && intent.scheme == "content") {
             mainViewModel.requestImportTask.value = intent
         }
@@ -370,6 +386,9 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
                 ServiceStarterDialog().show(supportFragmentManager)
             }
         }
+        binding.btnVoiceCommand.setNoDoubleClickListener {
+            requestStartVoiceCommandService()
+        }
         binding.fabAction.setNoDoubleClickListener {
             TaskCreatorDialog().show(supportFragmentManager)
         }
@@ -398,6 +417,35 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
                 }
             }
         })
+    }
+
+    private fun requestStartVoiceCommandService() {
+        val permissions = requiredVoiceCommandPermissions()
+        val missing = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            startVoiceCommandService()
+        } else {
+            voiceCommandPermissionLauncher.launch(missing.toTypedArray())
+        }
+    }
+
+    private fun requiredVoiceCommandPermissions(): List<String> {
+        return buildList {
+            add(Manifest.permission.RECORD_AUDIO)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    private fun startVoiceCommandService() {
+        ContextCompat.startForegroundService(
+            this,
+            Intent(this, VoiceCommandService::class.java).setAction(VoiceCommandService.ACTION_START)
+        )
+        toast(R.string.voice_command_listening)
     }
 
     @SuppressLint("MissingSuperCall")

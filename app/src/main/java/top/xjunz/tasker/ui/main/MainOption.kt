@@ -14,6 +14,7 @@ import top.xjunz.tasker.app
 import top.xjunz.tasker.autostart.AutoStartUtil
 import top.xjunz.tasker.service.isPremium
 import top.xjunz.tasker.upForGrabs
+import top.xjunz.tasker.voice.AsrServiceType
 
 /**
  * @author xjunz 2023/02/27
@@ -66,6 +67,11 @@ sealed class MainOption(
         }
     })
 
+    object VoiceRecognitionConfig :
+        MainOption(R.string.voice_recognition_config, R.drawable.ic_mic_24px, desc = {
+            AsrServiceType.titleOf(Preferences.speechRecognitionService)
+        })
+
     object Feedback : MainOption(R.string.feedback_and_communicate, R.drawable.baseline_chat_24)
 
     object VersionInfo : MainOption(R.string.version_info, R.drawable.baseline_info_24, desc = {
@@ -84,9 +90,27 @@ sealed class MainOption(
 
     companion object {
         val ALL_OPTIONS = if (upForGrabs) {
-            arrayOf(ExportTasks, AutoStart, WakeLock, NightMode, Feedback, VersionInfo, About)
+            arrayOf(
+                ExportTasks,
+                AutoStart,
+                WakeLock,
+                NightMode,
+                VoiceRecognitionConfig,
+                Feedback,
+                VersionInfo,
+                About
+            )
         } else {
-            arrayOf(PremiumStatus, ExportTasks, AutoStart, NightMode, Feedback, VersionInfo, About)
+            arrayOf(
+                PremiumStatus,
+                ExportTasks,
+                AutoStart,
+                NightMode,
+                VoiceRecognitionConfig,
+                Feedback,
+                VersionInfo,
+                About
+            )
         }
     }
 }

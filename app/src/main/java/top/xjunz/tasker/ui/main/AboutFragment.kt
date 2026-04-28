@@ -10,11 +10,16 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.text.InputType
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.widget.ArrayAdapter
+import android.widget.LinearLayout
 import androidx.activity.result.ActivityResultCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContract
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.view.isVisible
@@ -28,6 +33,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.withContext
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
+import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 import top.xjunz.shared.utils.illegalArgument
 import top.xjunz.tasker.Preferences
 import top.xjunz.tasker.R
@@ -61,6 +70,7 @@ import top.xjunz.tasker.ui.purchase.PurchaseDialog.Companion.showPurchaseDialog
 import top.xjunz.tasker.util.ClickListenerUtil.setNoDoubleClickListener
 import top.xjunz.tasker.util.Feedbacks
 import top.xjunz.tasker.util.formatCurrentTime
+import top.xjunz.tasker.voice.AsrServiceType
 import java.util.zip.ZipOutputStream
 
 /**
@@ -244,6 +254,8 @@ class AboutFragment : BaseFragment<FragmentAboutBinding>(), ScrollTarget,
                 updateOption()
             }
 
+            MainOption.VoiceRecognitionConfig -> showVoiceRecognitionConfigDialog { updateOption() }
+
             MainOption.ExportTasks -> {
                 toast(R.string.select_export_path)
                 saveToSAFLauncher.launch(
@@ -254,6 +266,160 @@ class AboutFragment : BaseFragment<FragmentAboutBinding>(), ScrollTarget,
             }
         }
     }
+
+    private fun showVoiceRecognitionConfigDialog(onSaved: () -> Unit) {
+        val context = requireContext()
+        val marginTop = 12.dp
+        var selectedService = Preferences.speechRecognitionService
+
+        fun newInputLayout(title: CharSequence, text: CharSequence?, maxLines: Int): Pair<TextInputLayout, TextInputEditText> {
+            val input = TextInputEditText(context).apply {
+                setText(text)
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                this.maxLines = maxLines
+            }
+            val layout = TextInputLayout(context).apply {
+                hint = title
+                boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+                addView(input)
+            }
+            return layout to input
+        }
+
+        val serviceNames = AsrServiceType.all.map { AsrServiceType.titleOf(it).text }
+        val serviceInput = MaterialAutoCompleteTextView(context).apply {
+            inputType = InputType.TYPE_NULL
+            setAdapter(
+                ArrayAdapter(
+                    context,
+                    android.R.layout.simple_spinner_dropdown_item,
+                    serviceNames
+                )
+            )
+            setText(serviceNames[AsrServiceType.indexOf(selectedService)], false)
+        }
+        val serviceLayout = TextInputLayout(context).apply {
+            hint = R.string.asr_service.text
+            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+            addView(serviceInput)
+        }
+
+        val (appKeyLayout, appKeyInput) = newInputLayout(
+            R.string.voice_recognition_app_key.text,
+            Preferences.speechRecognitionAppKey.orEmpty(),
+            2
+        )
+        val (accessKeyIdLayout, accessKeyIdInput) = newInputLayout(
+            R.string.voice_recognition_access_key_id.text,
+            Preferences.speechRecognitionAccessKeyId.orEmpty(),
+            2
+        )
+        val (accessKeySecretLayout, accessKeySecretInput) = newInputLayout(
+            R.string.voice_recognition_access_key_secret.text,
+            Preferences.speechRecognitionAccessKeySecret.orEmpty(),
+            3
+        )
+
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24.dp, 8.dp, 24.dp, 0)
+            addView(serviceLayout)
+            addView(appKeyLayout, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            addView(accessKeyIdLayout, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            addView(accessKeySecretLayout, LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        listOf(appKeyLayout, accessKeyIdLayout, accessKeySecretLayout).forEach {
+            (it.layoutParams as? LinearLayout.LayoutParams)?.topMargin = marginTop
+        }
+
+        fun updateAlibabaFields() {
+            val showAlibabaFields = selectedService != AsrServiceType.SYSTEM
+            appKeyLayout.isVisible = showAlibabaFields
+            accessKeyIdLayout.isVisible = showAlibabaFields
+            accessKeySecretLayout.isVisible = showAlibabaFields
+        }
+
+        serviceInput.setOnItemClickListener { _, _, position, _ ->
+            selectedService = AsrServiceType.all[position]
+            updateAlibabaFields()
+        }
+        updateAlibabaFields()
+
+        val dialog = MaterialAlertDialogBuilder(context)
+            .setTitle(R.string.voice_recognition_config)
+            .setMessage(R.string.voice_recognition_config_caption)
+            .setView(container)
+            .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton(android.R.string.ok, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                if (!saveVoiceRecognitionConfig(
+                        selectedService,
+                        appKeyInput,
+                        appKeyLayout,
+                        accessKeyIdInput,
+                        accessKeyIdLayout,
+                        accessKeySecretInput,
+                        accessKeySecretLayout
+                    )
+                ) {
+                    return@setOnClickListener
+                }
+                toast(R.string.voice_recognition_config_saved)
+                onSaved()
+                dialog.dismiss()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun saveVoiceRecognitionConfig(
+        selectedService: Int,
+        appKeyInput: TextInputEditText,
+        appKeyLayout: TextInputLayout,
+        accessKeyIdInput: TextInputEditText,
+        accessKeyIdLayout: TextInputLayout,
+        accessKeySecretInput: TextInputEditText,
+        accessKeySecretLayout: TextInputLayout
+    ): Boolean {
+        appKeyLayout.error = null
+        accessKeyIdLayout.error = null
+        accessKeySecretLayout.error = null
+        val appKey = appKeyInput.text?.toString()?.trim().orEmpty()
+        val accessKeyId = accessKeyIdInput.text?.toString()?.trim().orEmpty()
+        val accessKeySecret = accessKeySecretInput.text?.toString()?.trim().orEmpty()
+        if (selectedService == AsrServiceType.ALIBABA) {
+            var valid = true
+            if (appKey.isEmpty()) {
+                appKeyLayout.error = R.string.error_empty_input.text
+                valid = false
+            }
+            if (accessKeyId.isEmpty()) {
+                accessKeyIdLayout.error = R.string.error_empty_input.text
+                valid = false
+            }
+            if (accessKeySecret.isEmpty()) {
+                accessKeySecretLayout.error = R.string.error_empty_input.text
+                valid = false
+            }
+            if (!valid) return false
+        }
+        Preferences.speechRecognitionService = selectedService
+        Preferences.speechRecognitionAppKey = appKey.takeIf { it.isNotEmpty() }
+        Preferences.speechRecognitionAccessKeyId = accessKeyId.takeIf { it.isNotEmpty() }
+        Preferences.speechRecognitionAccessKeySecret = accessKeySecret.takeIf { it.isNotEmpty() }
+        Preferences.speechRecognitionToken = null
+        Preferences.speechRecognitionTokenExpireTime = 0L
+        return true
+    }
+
+    private val Int.dp: Int
+        get() = TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            toFloat(),
+            resources.displayMetrics
+        ).toInt()
 
     override fun getScrollTarget(): RecyclerView? {
         return if (isAdded) binding.rvOption else null
