@@ -14,7 +14,7 @@
 | `aidl` | 开启 |
 | ABI filters | `x86`, `arm64-v8a`, `x86_64` |
 | App Id | `top.xjunz.tasker` |
-| Version | `2.0` / code `18`（由根目录 `gradle.properties` 的 `APP_VERSION_NAME` / `APP_VERSION_CODE` 管理） |
+| Version | `2.0.0` / code `200`（由根目录 `gradle.properties` 的 `APP_VERSION_NAME` / `APP_VERSION_CODE` 管理） |
 | 签名 | 全构建共用 `signingConfigs.xjunz`，debug 也用同一套 |
 
 ### 1.1 `local.properties`（**必填**）
