@@ -40,6 +40,12 @@ abstract class Criterion<T, V> : Applet() {
      */
     private fun getMatchTarget(runtime: TaskRuntime): T {
         if (isScoped) return runtime.getTarget()
+        if (!references.containsKey(0)) {
+            check(argumentTypes.getOrNull(0) != Applet.ARG_TYPE_REFERENCE) {
+                "Argument 0 is not referring to anything!"
+            }
+            return Unit.casted()
+        }
         val target = runtime.getReferenceArgument(this, 0)?.casted<T>()
         if (target != null) {
             return target
