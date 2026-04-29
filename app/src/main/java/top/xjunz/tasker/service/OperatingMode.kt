@@ -18,8 +18,8 @@ import top.xjunz.tasker.service.controller.ShizukuAutomatorServiceController
  */
 sealed class OperatingMode(
     val VALUE: Int,
-    @StringRes private val nameRes: Int,
-    @StringRes private val descRes: Int
+    @param:StringRes private val nameRes: Int,
+    @param:StringRes private val descRes: Int
 ) {
 
     val name get() = nameRes.str

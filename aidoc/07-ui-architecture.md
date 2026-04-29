@@ -22,15 +22,46 @@
 |------|------|
 | Launcher | `ui/main/MainActivity.kt` |
 | Root layout | `res/layout/activity_main.xml` |
-| 底部导航 | `BottomNavigationView` + `ViewPager2`（`task_bottom_bar.xml` 菜单） |
-| 4 个一级 Tab | `EnabledTaskFragment` / `ResidentTaskFragment` / `OneshotTaskFragment` / `AboutFragment` |
+| 底部导航 | `BottomNavigationView` + `ViewPager2`（`res/menu/task_bottom_bar.xml` 菜单） |
+| 5 个一级 Tab | `EnabledTaskFragment` / `ResidentTaskFragment` / `OneshotTaskFragment` / `VoiceCommandFragment` / `AboutFragment` |
 | FAB | 打开 `TaskCreatorDialog` |
-| Toolbar 按钮 | 启动 / 停止服务（打开 `ServiceStarterDialog` 或确认 `MainViewModel.requestStopService`） |
+| Toolbar 按钮 | 仅保留启动 / 停止服务（打开 `ServiceStarterDialog` 或确认 `MainViewModel.requestStopService`） |
 | 副活动 | `ui/outer/CrashReportActivity.kt`（崩溃时跳转） |
 
 **跨 Fragment 共享**：`MainViewModel` 承担事件总线（服务状态、对话框栈、导入分享）。
 
-### 2.1 关于页与反馈交流
+### 2.1 主页一级导航约束
+
+主页采用 **一个 Activity 根布局 + 五个 Fragment 页面** 的方式管理，不把一级页面内容直接塞进 `activity_main.xml`：
+
+| 位置 | 职责 |
+|------|------|
+| `res/layout/activity_main.xml` | 只放主框架：`ViewPager2`、顶栏、添加任务 FAB、`BottomNavigationView`。不要在这里新增某个 Tab 的业务 UI。 |
+| `res/menu/task_bottom_bar.xml` | 声明底部导航项，菜单顺序必须和 `MainActivity.viewPagerAdapter.createFragment(position)` 的 position 顺序一致。 |
+| `ui/main/MainActivity.kt` | 只负责一级页面映射、底部导航与 `ViewPager2` 双向同步、AppBar lift/scroll target、任务页 badge。 |
+| 各 Fragment 自己的 layout | 每个一级页面的真实 UI 放在自己的 `fragment_*.xml` 中，例如语音页是 `fragment_voice_command.xml`。 |
+
+当前固定映射如下：
+
+| position | bottom item id | Fragment | 布局 |
+|----------|----------------|----------|------|
+| 0 | `item_running_tasks` | `EnabledTaskFragment` | `fragment_task_showcase.xml` |
+| 1 | `item_resident_tasks` | `ResidentTaskFragment` | `fragment_task_showcase.xml` |
+| 2 | `item_oneshot_tasks` | `OneshotTaskFragment` | `fragment_task_showcase.xml` |
+| 3 | `item_voice_command` | `VoiceCommandFragment` | `fragment_voice_command.xml` |
+| 4 | `item_more` | `AboutFragment` | `fragment_about.xml` |
+
+修改一级导航时必须同步检查：
+
+- `MainActivity.viewPagerAdapter.getItemCount()`。
+- `MainActivity.viewPagerAdapter.createFragment(position)`。
+- `MainActivity.scrollTargets` 数组长度。
+- `res/menu/task_bottom_bar.xml` 的 item 顺序。
+- `taskBadgeItemIds` 只应包含三个任务页：已启用、常驻任务、单次任务；不要给语音页或更多页挂任务数量 badge。
+- 新页面如需参与 AppBar lift 行为，应实现 `ScrollTarget` 并返回自己的滚动视图。
+- 不要用左下角 mini FAB、顶栏额外按钮等方式承载一级功能入口，避免遮挡底部导航或压缩标题/服务按钮。
+
+### 2.2 关于页与反馈交流
 
 `AboutFragment` 渲染底部导航的"关于"页，选项列表来自 `MainOption.ALL_OPTIONS`。其中"反馈 & 交流"对应 `MainOption.Feedback`，点击后弹出 `res/menu/feedbacks.xml` 菜单：
 
@@ -53,16 +84,17 @@
 - "反馈 & 交流"入口名称、"加群"、"邮件"这些菜单文案是**Android 资源配置**：改 `res/values/strings.xml` 的 `feedback_and_communicate`、`feedback_group`、`feedback_email`。改完需要重新打包安装。
 - 菜单里有哪些项是**XML 菜单配置**：改 `res/menu/feedbacks.xml`。如果新增菜单项，还要同步改 `AboutFragment.onOptionClicked()` 中 `MainOption.Feedback` 分支的点击处理。改完需要重新打包安装。
 
-### 2.2 语音指令入口
+### 2.3 语音指令入口
 
-第一版语音指令只做**应用内手动启动监听**：用户点击主界面标题栏的麦克风按钮后，启动 `voice/VoiceCommandService` 前台服务；服务会在通知栏常驻，用户可点通知里的"停止语音监听"随时关闭。没有做后台热词唤醒，也不会在 App 启动时自动监听。
+语音指令是一个独立底部导航分页，不再放在标题栏按钮或悬浮按钮里。用户进入"语音"页后，点击页面内主按钮启动 `voice/VoiceCommandService` 前台服务；服务会在通知栏常驻，用户可在语音页或通知里的"停止语音监听"关闭。没有做后台热词唤醒，也不会在 App 启动时自动监听。
 
 入口与权限：
 
-- UI 入口：`res/layout/activity_main.xml` 的 `btn_voice_command`，点击处理在 `ui/main/MainActivity.kt` 的 `requestStartVoiceCommandService()`。
+- UI 入口：`res/menu/task_bottom_bar.xml` 的 `item_voice_command` → `MainActivity` position 3 → `ui/voice/VoiceCommandFragment.kt`。
+- 页面布局：`res/layout/fragment_voice_command.xml`；执行记录 item：`res/layout/item_voice_command_record.xml`。
 - 阿里云配置入口：关于/设置页的"语音识别 AppKey"、"阿里云 AccessKey ID"、"阿里云 AccessKey Secret"和"语音识别 Token"，由 `ui/main/MainOption.kt` 注册，点击处理在 `ui/main/AboutFragment.kt`。配置值保存在 `Preferences.speechRecognitionAppKey`、`Preferences.speechRecognitionAccessKeyId`、`Preferences.speechRecognitionAccessKeySecret` 和 `Preferences.speechRecognitionToken`，底层是本机 `SharedPreferences`，不是写死在代码或打包资源里；用户可在 App 内修改或清空。
-- 麦克风权限：`AndroidManifest.xml` 的 `RECORD_AUDIO`，运行时由 `MainActivity` 请求。
-- 通知权限：`AndroidManifest.xml` 的 `POST_NOTIFICATIONS`，Android 13+ 运行时由 `MainActivity` 请求；没有通知权限时不启动语音监听，因为用户无法从通知栏关闭。
+- 麦克风权限：`AndroidManifest.xml` 的 `RECORD_AUDIO`，运行时由 `VoiceCommandFragment` 请求。
+- 通知权限：`AndroidManifest.xml` 的 `POST_NOTIFICATIONS`，Android 13+ 运行时由 `VoiceCommandFragment` 请求；没有通知权限时不启动语音监听，因为用户无法从通知栏关闭。
 - 前台服务权限：`AndroidManifest.xml` 的 `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_MICROPHONE`；`VoiceCommandService` 声明 `foregroundServiceType="microphone"`。
 
 识别与执行：
@@ -71,7 +103,7 @@
 - 命令解析：`voice/VoiceCommandParser.kt` 支持 `执行`、`运行`、`启动`、`打开`、`开始` 前缀；没有前缀时把整句话当任务名。
 - 任务匹配：`VoiceCommandService.findTask()` 先按任务标题精确匹配，再做去空白/标点后的包含匹配；匹配到多个任务时不会执行，会提示用户说完整任务名。
 - 任务执行：当前只支持一次性任务（`XTask.TYPE_ONESHOT`）。匹配到一次性任务后复用现有入口：`LocalTaskManager.addOneshotTaskIfAbsent(task)` + `currentService.scheduleOneshotTask(...)`。匹配到常驻任务时只提示，不直接启用或运行。
-- 结果展示：识别文本、匹配到的任务、执行中、完成/失败都会用 toast 和前台通知文本反馈。
+- 结果展示：`VoiceCommandService.uiState` 输出 `VoiceCommandUiState` 和倒序 `VoiceCommandRecord`；`VoiceCommandFragment` 展示当前状态、最近识别文本、解析命令、匹配任务和执行记录。toast 和前台通知仍保留为即时反馈。
 
 阿里云 ASR 的 `AppKey` 与 `Token` 获取：
 
@@ -89,8 +121,9 @@
 
 - 改识别前缀 / 指令语法：`voice/VoiceCommandParser.kt`。
 - 改匹配策略 / 支持常驻任务：`voice/VoiceCommandService.kt` 的 `findTask()`、`launchTask()`。
+- 改状态或记录展示：`VoiceCommandUiState`、`VoiceCommandRecord`、`ui/voice/VoiceCommandFragment.kt`、`res/layout/fragment_voice_command.xml`、`res/layout/item_voice_command_record.xml`。
 - 改 AppKey / AccessKey / Token 保存位置或配置项说明：`Preferences.kt`、`MainOption.kt`、`AboutFragment.kt`、`res/values/strings.xml`。
-- 改入口按钮位置或图标：`res/layout/activity_main.xml`、`res/drawable/ic_mic_24px.xml`。
+- 改语音 Tab 入口或图标：`res/menu/task_bottom_bar.xml`、`ui/main/MainActivity.kt` 的 position 映射、`res/drawable/ic_mic_24px.xml`。不要把语音入口重新放回 `activity_main.xml` 的顶栏或 FAB。
 - 改通知标题、权限提示、执行提示：`res/values/strings.xml` 中 `voice_command*` 和 `format_voice_command_*` 字符串。
 
 ## 3. 任务编辑器（`ui/task/editor/`）
@@ -242,9 +275,9 @@
 
 ## 11. 布局资源概览
 
-`app/src/main/res/layout/` 共 **74** 个 XML，分组如下：
+`app/src/main/res/layout/` 共 **76** 个 XML，分组如下：
 
-- **Activity / 主页**：`activity_main.xml`、`activity_crash_report.xml`、`fragment_about.xml`
+- **Activity / 主页**：`activity_main.xml`、`activity_crash_report.xml`、`fragment_about.xml`、`fragment_voice_command.xml`、`item_voice_command_record.xml`
 - **任务陈列**：`fragment_task_showcase.xml`、`item_task_showcase.xml`、`dialog_task_showcase.xml`、`item_task_list.xml`、`item_task_assistant.xml`、`layout_menu_list.xml`、`item_menu.xml`
 - **流编辑**：`dialog_flow_editor.xml`、`item_flow_item.xml`、`item_flow_cascade.xml`、`item_flow_name.xml`、`item_flow_opt_demo.xml`、`layout_flow_operation_demo.xml`、`layout_progress.xml`
 - **Applet 选择 / 参数**：`dialog_applet_selector.xml`、`item_applet_candidate.xml`、`item_applet_cateory.xml`（拼写保留）、`item_applet_option.xml`、`item_applet_factory.xml`、`dialog_component_selector.xml`、`fragment_component_selector.xml`、`dialog_enum_selector.xml`、`item_enum_selector.xml`、`item_argument_editor.xml`、`dialog_arguments_editor.xml`、`dialog_bits_value_editor.xml`、`dialog_range_editor.xml`、`dialog_coordinate_editor.xml`、`dialog_distance_editor.xml`、`dialog_time_interval_editor.xml`、`layout_shopping_cart.xml`、`item_bread_crumbs.xml`、`item_input_layout.xml`、`item_check_case.xml`、`item_main_option.xml`、`item_application_info.xml`、`item_activity_info.xml`、`dialog_activity_selector.xml`
@@ -256,8 +289,9 @@
 1. **全部复杂交互走 DialogFragment + ViewBinding**，不新建 Activity。
 2. **对话框栈**：全屏 Dialog 必须继承 `BaseDialogFragment` 以参与 `DialogStackManager` 动画。
 3. **事件总线** `MainViewModel` / `TaskShowcaseViewModel` 里统一跑跨组件事件。
-4. **参数编辑器**必须实现：`ArgumentDescriptor.valueType → 对应 Dialog → onResult` 写回 `ArgumentsEditorDialog.vm`。
-5. 增加参数类型时需要同时修改：
+4. **主页一级页面只通过 `BottomNavigationView` + `ViewPager2` + Fragment 管理**。`activity_main.xml` 只做壳，不承载具体 Tab 的业务 UI；新增/移动 Tab 必须同步菜单顺序、adapter position、scroll target 和 badge 逻辑。
+5. **参数编辑器**必须实现：`ArgumentDescriptor.valueType → 对应 Dialog → onResult` 写回 `ArgumentsEditorDialog.vm`。
+6. 增加参数类型时需要同时修改：
    - `VariantArgType.kt`
    - `AppletOption.withXxxArgument(...)`
    - `ArgumentsEditorDialog.kt` 派发逻辑
@@ -272,5 +306,6 @@
 - `app/src/main/java/top/xjunz/tasker/ui/task/inspector/**`
 - `app/src/main/java/top/xjunz/tasker/task/inspector/overlay/**`
 - `app/src/main/java/top/xjunz/tasker/ui/task/showcase/**`
+- `app/src/main/java/top/xjunz/tasker/ui/voice/**`
 - `app/src/main/java/top/xjunz/tasker/ui/widget/**`
-- `app/src/main/res/layout/`（74 个 xml）
+- `app/src/main/res/layout/`（76 个 xml）

@@ -17,6 +17,7 @@
 8. 构建 / 签名 / 混淆 / 付费版功能：`08-build-config-premium.md`。
 9. 排查已知坑点：`10-troubleshooting.md`。
 10. 术语与简写：`11-glossary.md`。
+11. 发版说明：`12-release-notes.md`。
 
 ## 文件索引
 
@@ -33,6 +34,7 @@
 | [`09-development-guide.md`](09-development-guide.md) | **扩展手册**：加 Applet / Registry / Event / Bridge 的标准流程 |
 | [`10-troubleshooting.md`](10-troubleshooting.md) | 已知坑点、常见 bug、排查入口 |
 | [`11-glossary.md`](11-glossary.md) | 术语表 |
+| [`12-release-notes.md`](12-release-notes.md) | 发版说明、版本重点与验证记录 |
 
 ## 重要约定
 
@@ -51,6 +53,7 @@
 - 引入 **新依赖库** ⇒ 更新 `08-build-config-premium.md`。
 - 改动 **反馈 & 交流** 的邮箱、QQ群、邮件模板或菜单入口 ⇒ 更新 `07-ui-architecture.md` 的"关于页与反馈交流"章节。
 - 改动 **语音指令** 的入口、AppKey / AccessKey / Token 配置、权限、识别服务、匹配策略或执行规则 ⇒ 更新 `07-ui-architecture.md` 的"语音指令入口"章节。
+- 发布新版本或调整版本号 ⇒ 更新 `12-release-notes.md` 与 `01-overview.md` / `08-build-config-premium.md` 的版本信息。
 - 发现 **新坑点 / 复现 bug** ⇒ 进 `10-troubleshooting.md` 积累。
 
 保持每篇文档**自包含 + 互相交叉引用**，不要让 AI 反复跳读源码。

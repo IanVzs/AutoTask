@@ -36,6 +36,37 @@ import top.xjunz.tasker.task.runtime.LocalTaskManager
 import top.xjunz.tasker.task.storage.TaskStorage
 import java.util.Locale
 
+enum class VoiceCommandStatus {
+    IDLE,
+    LISTENING,
+    RECOGNIZING,
+    EXECUTING,
+    ERROR
+}
+
+enum class VoiceCommandRecordResult {
+    INFO,
+    SUCCESS,
+    FAILURE
+}
+
+data class VoiceCommandRecord(
+    val timestamp: Long,
+    val title: String,
+    val detail: String? = null,
+    val result: VoiceCommandRecordResult = VoiceCommandRecordResult.INFO
+)
+
+data class VoiceCommandUiState(
+    val isRunning: Boolean = false,
+    val status: VoiceCommandStatus = VoiceCommandStatus.IDLE,
+    val latestText: String? = null,
+    val latestCommand: String? = null,
+    val latestTaskTitle: String? = null,
+    val latestResult: VoiceCommandRecordResult? = null,
+    val records: List<VoiceCommandRecord> = emptyList()
+)
+
 class VoiceCommandService : Service(), RecognitionListener {
 
     companion object {
@@ -43,10 +74,12 @@ class VoiceCommandService : Service(), RecognitionListener {
         const val ACTION_STOP = "top.xjunz.tasker.voice.action.STOP"
 
         val isRunning = MutableLiveData(false)
+        val uiState = MutableLiveData(VoiceCommandUiState())
 
         private const val CHANNEL_ID = "voice_command"
         private const val NOTIFICATION_ID = 0x610
         private const val RESTART_DELAY_MILLIS = 800L
+        private const val MAX_RECORD_COUNT = 30
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -61,6 +94,17 @@ class VoiceCommandService : Service(), RecognitionListener {
     override fun onCreate() {
         super.onCreate()
         isRunning.value = true
+        updateUiState {
+            it.copy(
+                isRunning = true,
+                status = VoiceCommandStatus.LISTENING,
+                latestResult = null
+            )
+        }
+        appendRecord(
+            title = getString(R.string.voice_record_service_started),
+            detail = getString(R.string.voice_command_notification_text)
+        )
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.voice_command_notification_text)))
     }
@@ -83,6 +127,17 @@ class VoiceCommandService : Service(), RecognitionListener {
         speechRecognizer?.destroy()
         speechRecognizer = null
         scope.cancel()
+        appendRecord(
+            title = getString(R.string.voice_record_service_stopped),
+            detail = getString(R.string.voice_record_service_stopped_detail)
+        )
+        updateUiState {
+            it.copy(
+                isRunning = false,
+                status = VoiceCommandStatus.IDLE,
+                latestResult = null
+            )
+        }
         isRunning.value = false
         super.onDestroy()
     }
@@ -115,6 +170,9 @@ class VoiceCommandService : Service(), RecognitionListener {
             speechRecognizer = it
         } ?: return false
         isListening = true
+        updateUiState {
+            it.copy(isRunning = true, status = VoiceCommandStatus.LISTENING, latestResult = null)
+        }
         updateNotification(getString(R.string.voice_command_listening))
         recognizer.startListening(
             Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -136,6 +194,9 @@ class VoiceCommandService : Service(), RecognitionListener {
             return
         }
         isListening = true
+        updateUiState {
+            it.copy(isRunning = true, status = VoiceCommandStatus.LISTENING, latestResult = null)
+        }
         updateNotification(getString(R.string.voice_command_alibaba_listening))
         cloudRecognitionJob = scope.launch {
             val result = runCatching {
@@ -146,6 +207,12 @@ class VoiceCommandService : Service(), RecognitionListener {
                 if (text.isNullOrBlank()) {
                     toast(R.string.voice_command_alibaba_no_result)
                     updateNotification(getString(R.string.voice_command_alibaba_no_result))
+                    appendRecord(
+                        title = getString(R.string.voice_record_no_result),
+                        detail = getString(R.string.voice_command_alibaba_no_result),
+                        result = VoiceCommandRecordResult.FAILURE,
+                        status = VoiceCommandStatus.ERROR
+                    )
                     restartListeningDelayed()
                 } else {
                     handleRecognizedText(text)
@@ -160,6 +227,12 @@ class VoiceCommandService : Service(), RecognitionListener {
     private fun notifyAndStop(message: String) {
         toast(message)
         updateNotification(message)
+        appendRecord(
+            title = getString(R.string.voice_record_error),
+            detail = message,
+            result = VoiceCommandRecordResult.FAILURE,
+            status = VoiceCommandStatus.ERROR
+        )
         stopSelf()
     }
 
@@ -170,10 +243,31 @@ class VoiceCommandService : Service(), RecognitionListener {
 
     private fun handleRecognizedText(text: String) {
         toast(getString(R.string.format_voice_command_heard, text))
+        updateUiState {
+            it.copy(
+                status = VoiceCommandStatus.RECOGNIZING,
+                latestText = text,
+                latestCommand = null,
+                latestTaskTitle = null,
+                latestResult = null
+            )
+        }
         val query = VoiceCommandParser.parseRunTaskQuery(text)
         if (query == null) {
+            appendRecord(
+                title = getString(R.string.voice_record_parse_failed),
+                detail = getString(R.string.format_voice_command_heard, text),
+                result = VoiceCommandRecordResult.FAILURE,
+                status = VoiceCommandStatus.ERROR
+            )
             restartListeningDelayed()
             return
+        }
+        updateUiState {
+            it.copy(
+                latestCommand = query,
+                status = VoiceCommandStatus.RECOGNIZING
+            )
         }
         scope.launch {
             if (!TaskStorage.storageTaskLoaded) {
@@ -190,6 +284,12 @@ class VoiceCommandService : Service(), RecognitionListener {
                 val message = getString(R.string.format_voice_command_not_found, query)
                 toast(message)
                 updateNotification(message)
+                appendRecord(
+                    title = getString(R.string.voice_record_match_failed),
+                    detail = message,
+                    result = VoiceCommandRecordResult.FAILURE,
+                    status = VoiceCommandStatus.ERROR
+                )
             }
 
             is MatchResult.Ambiguous -> {
@@ -197,6 +297,12 @@ class VoiceCommandService : Service(), RecognitionListener {
                 val message = getString(R.string.format_voice_command_ambiguous, names)
                 toast(message)
                 updateNotification(message)
+                appendRecord(
+                    title = getString(R.string.voice_record_match_ambiguous),
+                    detail = message,
+                    result = VoiceCommandRecordResult.FAILURE,
+                    status = VoiceCommandStatus.ERROR
+                )
             }
 
             is MatchResult.Found -> launchTask(result.task)
@@ -206,15 +312,34 @@ class VoiceCommandService : Service(), RecognitionListener {
     private fun launchTask(task: XTask) {
         toast(getString(R.string.format_voice_command_matched, task.title))
         updateNotification(getString(R.string.format_voice_command_matched, task.title))
+        updateUiState {
+            it.copy(
+                latestTaskTitle = task.title,
+                status = VoiceCommandStatus.EXECUTING,
+                latestResult = null
+            )
+        }
         if (task.isResident) {
             val message = getString(R.string.format_voice_command_unsupported_task, task.title)
             toast(message)
             updateNotification(message)
+            appendRecord(
+                title = getString(R.string.voice_record_unsupported_task),
+                detail = message,
+                result = VoiceCommandRecordResult.FAILURE,
+                status = VoiceCommandStatus.ERROR
+            )
             return
         }
         if (!serviceController.isServiceRunning) {
             toast(R.string.service_not_started)
             updateNotification(getString(R.string.service_not_started))
+            appendRecord(
+                title = getString(R.string.voice_record_service_not_started),
+                detail = getString(R.string.service_not_started),
+                result = VoiceCommandRecordResult.FAILURE,
+                status = VoiceCommandStatus.ERROR
+            )
             return
         }
         LocalTaskManager.addOneshotTaskIfAbsent(task)
@@ -230,11 +355,33 @@ class VoiceCommandService : Service(), RecognitionListener {
                         )
                         toast(message)
                         updateNotification(message)
+                        appendRecord(
+                            title = if (isSuccessful) {
+                                getString(R.string.voice_record_task_succeeded)
+                            } else {
+                                getString(R.string.voice_record_task_failed)
+                            },
+                            detail = message,
+                            result = if (isSuccessful) {
+                                VoiceCommandRecordResult.SUCCESS
+                            } else {
+                                VoiceCommandRecordResult.FAILURE
+                            },
+                            status = if (isSuccessful) {
+                                VoiceCommandStatus.LISTENING
+                            } else {
+                                VoiceCommandStatus.ERROR
+                            }
+                        )
                     }
                 }
             }
         )
         toast(getString(R.string.format_voice_command_launching, task.title))
+        appendRecord(
+            title = getString(R.string.voice_record_task_launching),
+            detail = getString(R.string.format_voice_command_launching, task.title)
+        )
     }
 
     private fun findTask(query: String): MatchResult {
@@ -307,9 +454,15 @@ class VoiceCommandService : Service(), RecognitionListener {
     }
 
     override fun onReadyForSpeech(params: Bundle?) {
+        updateUiState {
+            it.copy(status = VoiceCommandStatus.LISTENING, latestResult = null)
+        }
     }
 
     override fun onBeginningOfSpeech() {
+        updateUiState {
+            it.copy(status = VoiceCommandStatus.RECOGNIZING, latestResult = null)
+        }
     }
 
     override fun onRmsChanged(rmsdB: Float) {
@@ -325,6 +478,9 @@ class VoiceCommandService : Service(), RecognitionListener {
     override fun onError(error: Int) {
         isListening = false
         if (!isStopping && error != SpeechRecognizer.ERROR_CLIENT) {
+            updateUiState {
+                it.copy(status = VoiceCommandStatus.LISTENING, latestResult = null)
+            }
             restartListeningDelayed()
         }
     }
@@ -335,10 +491,43 @@ class VoiceCommandService : Service(), RecognitionListener {
             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             ?.firstOrNull()
         if (text.isNullOrBlank()) {
+            appendRecord(
+                title = getString(R.string.voice_record_no_result),
+                detail = getString(R.string.voice_record_no_result_detail),
+                result = VoiceCommandRecordResult.FAILURE,
+                status = VoiceCommandStatus.ERROR
+            )
             restartListeningDelayed()
         } else {
             handleRecognizedText(text)
         }
+    }
+
+    private fun appendRecord(
+        title: String,
+        detail: String? = null,
+        result: VoiceCommandRecordResult = VoiceCommandRecordResult.INFO,
+        status: VoiceCommandStatus? = null
+    ) {
+        updateUiState { current ->
+            val record = VoiceCommandRecord(
+                timestamp = System.currentTimeMillis(),
+                title = title,
+                detail = detail,
+                result = result
+            )
+            current.copy(
+                status = status ?: current.status,
+                latestResult = result,
+                records = (listOf(record) + current.records).take(MAX_RECORD_COUNT)
+            )
+        }
+    }
+
+    private fun updateUiState(block: (VoiceCommandUiState) -> VoiceCommandUiState) {
+        val next = block(uiState.value ?: VoiceCommandUiState())
+        uiState.value = next
+        isRunning.value = next.isRunning
     }
 
     override fun onPartialResults(partialResults: Bundle?) {

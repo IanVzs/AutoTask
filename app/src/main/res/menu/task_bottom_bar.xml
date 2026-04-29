@@ -20,6 +20,11 @@
         android:title="@string/oneshot_task" />
 
     <item
+        android:id="@+id/item_voice_command"
+        android:icon="@drawable/ic_mic_24px"
+        android:title="@string/voice_command_short" />
+
+    <item
         android:id="@+id/item_more"
         android:icon="@drawable/ic_tune_24px"
         android:title="@string/more" />

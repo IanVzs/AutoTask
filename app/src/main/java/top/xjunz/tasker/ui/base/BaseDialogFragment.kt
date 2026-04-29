@@ -74,7 +74,7 @@ open class BaseDialogFragment<T : ViewBinding> : AppCompatDialogFragment(),
         requireDialog().window?.setWindowAnimations(windowAnimationStyle)
         var superClass: Class<*> = javaClass
         for (i in 1 until bindingRequiredSuperClassDepth) {
-            superClass = superClass.superclass
+            superClass = checkNotNull(superClass.superclass)
         }
         binding = superClass.superClassFirstParameterizedType().getDeclaredMethod(
             "inflate", LayoutInflater::class.java, ViewGroup::class.java, Boolean::class.java

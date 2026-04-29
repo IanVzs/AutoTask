@@ -24,7 +24,7 @@ open class BaseFragment<T : ViewBinding> : Fragment(), HasDefaultViewModelProvid
     protected val binding: T by lazy {
         var superClass: Class<*> = javaClass
         for (i in 1 until bindingRequiredSuperClassDepth) {
-            superClass = superClass.superclass
+            superClass = checkNotNull(superClass.superclass)
         }
         superClass.superClassFirstParameterizedType().getDeclaredMethod(
             "inflate", LayoutInflater::class.java

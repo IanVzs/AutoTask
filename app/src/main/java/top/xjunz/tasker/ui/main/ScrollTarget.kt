@@ -4,11 +4,11 @@
 
 package top.xjunz.tasker.ui.main
 
-import androidx.recyclerview.widget.RecyclerView
+import android.view.View
 
 /**
  * @author xjunz 2023/03/05
  */
 interface ScrollTarget {
-    fun getScrollTarget(): RecyclerView?
+    fun getScrollTarget(): View?
 }

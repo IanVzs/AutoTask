@@ -4,12 +4,9 @@
 
 package top.xjunz.tasker.ui.main
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.DialogInterface
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.view.*
 import androidx.activity.result.ActivityResultLauncher
@@ -18,7 +15,6 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.coordinatorlayout.widget.CoordinatorLayout
-import androidx.core.content.ContextCompat
 import androidx.core.view.*
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -57,10 +53,10 @@ import top.xjunz.tasker.ui.service.ServiceStarterDialog
 import top.xjunz.tasker.ui.task.editor.FlowEditorDialog
 import top.xjunz.tasker.ui.task.inspector.FloatingInspectorDialog
 import top.xjunz.tasker.ui.task.showcase.*
+import top.xjunz.tasker.ui.voice.VoiceCommandFragment
 import top.xjunz.tasker.util.ClickListenerUtil.setNoDoubleClickListener
 import top.xjunz.tasker.util.ClickListenerUtil.setOnDoubleClickListener
 import top.xjunz.tasker.util.ShizukuUtil
-import top.xjunz.tasker.voice.VoiceCommandService
 import java.io.File
 import java.util.*
 import java.util.concurrent.TimeoutException
@@ -84,11 +80,11 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
 
     private val viewModel by viewModels<TaskShowcaseViewModel>()
 
-    private val scrollTargets = arrayOfNulls<ScrollTarget>(4)
+    private val scrollTargets = arrayOfNulls<ScrollTarget>(5)
 
     private lateinit var fabBehaviour: HideBottomViewOnScrollBehavior<View>
 
-    private val bottomItemIds
+    private val taskBadgeItemIds
         get() = intArrayOf(
             R.id.item_running_tasks,
             R.id.item_resident_tasks,
@@ -98,14 +94,15 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
     private val viewPagerAdapter by lazy {
         object : FragmentStateAdapter(this) {
 
-            override fun getItemCount(): Int = 4
+            override fun getItemCount(): Int = 5
 
             override fun createFragment(position: Int): Fragment {
                 val f = when (position) {
                     0 -> EnabledTaskFragment()
                     1 -> ResidentTaskFragment()
                     2 -> OneshotTaskFragment()
-                    3 -> AboutFragment()
+                    3 -> VoiceCommandFragment()
+                    4 -> AboutFragment()
                     else -> illegalArgument()
                 }
                 scrollTargets[position] = f
@@ -119,8 +116,6 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
     private lateinit var fileShareLauncher: ActivityResultLauncher<Intent>
 
     private lateinit var saveToSAFLauncher: ActivityResultLauncher<Intent>
-
-    private lateinit var voiceCommandPermissionLauncher: ActivityResultLauncher<Array<String>>
 
     private var shouldShowServiceStarterOnColdStart = false
 
@@ -156,16 +151,6 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
         saveToSAFLauncher =
             registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
                 currentOperatingFile?.delete()
-            }
-        voiceCommandPermissionLauncher =
-            registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-                if (requiredVoiceCommandPermissions().all {
-                        ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
-                    }) {
-                    startVoiceCommandService()
-                } else {
-                    toast(R.string.voice_command_permission_denied)
-                }
             }
         app.setAppTheme(theme)
         setContentView(binding.root)
@@ -293,22 +278,12 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
         observe(mainViewModel.isServiceRunning) {
             binding.btnServiceControl.isActivated = it
             if (it) {
-                binding.btnServiceControl.setText(R.string.stop_service_short)
+                binding.btnServiceControl.setText(R.string.stop_service)
                 binding.btnServiceControl.setIconResource(R.drawable.ic_baseline_stop_24)
                 viewModel.listenTaskPauseStateChanges()
             } else {
-                binding.btnServiceControl.setText(R.string.start_service_short)
+                binding.btnServiceControl.setText(R.string.start_service)
                 binding.btnServiceControl.setIconResource(R.drawable.ic_baseline_play_arrow_24)
-            }
-        }
-        observe(VoiceCommandService.isRunning) {
-            binding.btnVoiceCommand.isActivated = it
-            if (it) {
-                binding.btnVoiceCommand.setText(R.string.stop_voice_command_short)
-                binding.btnVoiceCommand.setIconResource(R.drawable.ic_baseline_stop_24)
-            } else {
-                binding.btnVoiceCommand.setText(R.string.start_voice_command_short)
-                binding.btnVoiceCommand.setIconResource(R.drawable.ic_mic_24px)
             }
         }
         observeDialog(mainViewModel.serviceBindingError) {
@@ -376,7 +351,7 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
         }
         mainViewModel.taskNumbers.forEachIndexed { index, ld ->
             observeNotNull(ld) {
-                binding.bottomBar.getOrCreateBadge(bottomItemIds[index]).number = it
+                binding.bottomBar.getOrCreateBadge(taskBadgeItemIds[index]).number = it
             }
         }
     }
@@ -419,13 +394,6 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
                 ServiceStarterDialog().show(supportFragmentManager)
             }
         }
-        binding.btnVoiceCommand.setNoDoubleClickListener {
-            if (it.isActivated) {
-                stopVoiceCommandService()
-            } else {
-                requestStartVoiceCommandService()
-            }
-        }
         binding.fabAction.setNoDoubleClickListener {
             TaskCreatorDialog().show(supportFragmentManager)
         }
@@ -449,44 +417,11 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
                 )
                 fabBehaviour.slideUp(binding.fabAction, true)
                 binding.appBar.setLiftOnScrollTargetView(scrollTargets[position]?.getScrollTarget())
-                for (i in 0..bottomItemIds.lastIndex) {
-                    binding.bottomBar.getOrCreateBadge(bottomItemIds[i]).isVisible = i == position
+                for (i in 0..taskBadgeItemIds.lastIndex) {
+                    binding.bottomBar.getOrCreateBadge(taskBadgeItemIds[i]).isVisible = i == position
                 }
             }
         })
-    }
-
-    private fun requestStartVoiceCommandService() {
-        val permissions = requiredVoiceCommandPermissions()
-        val missing = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (missing.isEmpty()) {
-            startVoiceCommandService()
-        } else {
-            voiceCommandPermissionLauncher.launch(missing.toTypedArray())
-        }
-    }
-
-    private fun requiredVoiceCommandPermissions(): List<String> {
-        return buildList {
-            add(Manifest.permission.RECORD_AUDIO)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                add(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-    }
-
-    private fun startVoiceCommandService() {
-        ContextCompat.startForegroundService(
-            this,
-            Intent(this, VoiceCommandService::class.java).setAction(VoiceCommandService.ACTION_START)
-        )
-        toast(R.string.voice_command_listening)
-    }
-
-    private fun stopVoiceCommandService() {
-        stopService(Intent(this, VoiceCommandService::class.java))
     }
 
     @SuppressLint("MissingSuperCall")
