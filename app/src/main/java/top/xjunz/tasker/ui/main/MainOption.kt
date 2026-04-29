@@ -20,10 +20,10 @@ import top.xjunz.tasker.voice.AsrServiceType
  * @author xjunz 2023/02/27
  */
 sealed class MainOption(
-    @StringRes val title: Int,
-    @DrawableRes val icon: Int,
+    @param:StringRes val title: Int,
+    @param:DrawableRes val icon: Int,
     var desc: () -> Any? = { null },
-    @StringRes var longDesc: Int = -1
+    @param:StringRes var longDesc: Int = -1
 ) {
     object PremiumStatus : MainOption(R.string.premium_status, R.drawable.ic_verified_24px, desc = {
         if (isPremium) {

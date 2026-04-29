@@ -23,7 +23,7 @@
     <string name="not_contains_text">不包含指定文本</string>
     <string name="in_app_collection">%s在应用名单中</string>
     <string name="not_in_app_collection">%s不在应用名单中</string>
-    <string name="format_range">%s至%s</string>
+    <string name="format_range">%1$s至%2$s</string>
     <string name="to_lower_case">将英文字母全部转为小写</string>
     <string name="trim">去除空格</string>
     <string name="on_package_entered">进入应用程序时</string>
@@ -89,7 +89,7 @@
     <string name="in_battery_capacity_range">电池电量在指定范围内</string>
     <string name="not_in_battery_capacity_range">电池电量不在指定范围内</string>
 
-    <string name="format_pkg_collection_desc">%s等共%d个应用程序</string>
+    <string name="format_pkg_collection_desc">%1$s等共%2$d个应用程序</string>
     <string name="format_act_collection_desc">已指定%d个页面</string>
     <string name="format_clear_selected_pkg">清空共%d个应用程序</string>
     <string name="format_clear_selected_act">清空共%d个页面</string>
@@ -98,7 +98,7 @@
     <string name="press_back">点击返回键</string>
     <string name="press_recent">切换到最近使用应用</string>
     <string name="press_home">回到桌面</string>
-    <string name="format_perform_input_text">向%s中输入%s</string>
+    <string name="format_perform_input_text">向%1$s中输入%2$s</string>
     <string name="perform_input_ref_text">匹配并输入文字(仅限文本框)</string>
     <string name="force_stop_current_app">强行停止当前应用</string>
 

@@ -256,6 +256,7 @@ class UiObjectCriterionRegistry(id: Int) : AppletOptionRegistry(id) {
         }
     }.withTitleModifier("Checkable")
 
+    @Suppress("DEPRECATION")
     @AppletOrdinal(0x02_05)
     val isChecked = invertibleAppletOption(R.string.is_checked) {
         nodePropertyCriterion {

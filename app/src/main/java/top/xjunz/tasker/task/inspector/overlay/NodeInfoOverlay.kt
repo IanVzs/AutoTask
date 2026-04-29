@@ -86,6 +86,7 @@ class NodeInfoOverlay(inspector: FloatingInspector) :
         if (node.isCheckable)
             allApplets.add(uiObjectRegistry.isCheckable.yield())
 
+        @Suppress("DEPRECATION")
         if (node.isChecked || node.isCheckable)
             allApplets.add(uiObjectRegistry.isChecked.yield())
 

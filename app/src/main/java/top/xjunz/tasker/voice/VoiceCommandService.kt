@@ -18,6 +18,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.core.app.NotificationCompat
+import androidx.lifecycle.MutableLiveData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -41,6 +42,8 @@ class VoiceCommandService : Service(), RecognitionListener {
         const val ACTION_START = "top.xjunz.tasker.voice.action.START"
         const val ACTION_STOP = "top.xjunz.tasker.voice.action.STOP"
 
+        val isRunning = MutableLiveData(false)
+
         private const val CHANNEL_ID = "voice_command"
         private const val NOTIFICATION_ID = 0x610
         private const val RESTART_DELAY_MILLIS = 800L
@@ -57,6 +60,7 @@ class VoiceCommandService : Service(), RecognitionListener {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning.value = true
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.voice_command_notification_text)))
     }
@@ -79,6 +83,7 @@ class VoiceCommandService : Service(), RecognitionListener {
         speechRecognizer?.destroy()
         speechRecognizer = null
         scope.cancel()
+        isRunning.value = false
         super.onDestroy()
     }
 

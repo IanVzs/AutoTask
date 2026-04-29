@@ -27,6 +27,10 @@
     <string name="launch_shizuku_manager">打开Shizuku</string>
     <string name="pls_grant_manually">您已选择「拒绝且不再询问」该应用的权限申请，请手动进行授权。</string>
     <string name="voice_command">语音指令</string>
+    <string name="start_voice_command">启动语音</string>
+    <string name="stop_voice_command">停止语音</string>
+    <string name="start_voice_command_short">开语音</string>
+    <string name="stop_voice_command_short">停语音</string>
     <string name="voice_recognition_config">语音识别服务</string>
     <string name="voice_recognition_config_caption">选择语音识别服务。默认会优先使用安卓标准系统识别；如果当前系统没有可用识别服务，并且已配置阿里云，则自动切换到阿里云。</string>
     <string name="voice_recognition_config_saved">语音识别服务配置已保存</string>
@@ -77,7 +81,7 @@
     <string name="error_occurred">发生错误</string>
     <string name="dump_log">导出日志</string>
     <string name="dump_log_failed">导出日志失败</string>
-    <string name="format_duration">共%d天%d时%d分</string>
+    <string name="format_duration">共%1$d天%2$d时%3$d分</string>
     <string name="auto_start_after_boot">开机自启</string>
     <string name="caption_auto_start">开启Shizuku</string>
     <string name="tip_enable_shizuku_auto_start">请先启用Shizuku的「开机启动」功能</string>
@@ -200,9 +204,9 @@
     \n<b>屏幕高度/宽度: </b>取值范围之间为0~1，代表多少比例的屏幕的宽度/高度
     \n<b>父节点高度/宽度: </b>取值范围之间为0~1，代表多少比例的父节点的宽度/高度
     </string>
-    <string name="format_scoped_distance_name">到%s%s边缘的距离</string>
+    <string name="format_scoped_distance_name">到%1$s%2$s边缘的距离</string>
     <string name="format_error_min_greater_than_max">%1$s不能大于%2$s</string>
-    <string name="format_error_min_max_not_in_scope">当前选中单位为\"%s\"，取值范围为%d到%d</string>
+    <string name="format_error_min_max_not_in_scope">当前选中单位为\"%1$s\"，取值范围为%2$d到%3$d</string>
     <string name="format_less_than">小于等于%s</string>
     <string name="format_larger_than">大于等于%s</string>
     <string name="format_percent_less_than">小于等于%d%%</string>
@@ -341,6 +345,8 @@
     <string name="edit_task_metadata">编辑任务信息</string>
     <string name="start_service">启动服务</string>
     <string name="stop_service">停止服务</string>
+    <string name="start_service_short">开服务</string>
+    <string name="stop_service_short">停服务</string>
     <string name="launch">启动</string>
     <string name="launching">正在启动…</string>
     <string name="tip_overlay_permission_for_task">用于在后台显示通知，未授权会导致相关任务运行失败。</string>
@@ -353,8 +359,8 @@
     <string name="text_operations">文本操作</string>
     <string name="app_operations">应用操作</string>
     <string name="format_long_click">长按%s</string>
-    <string name="format_coordinate">(%d, %d)</string>
-    <string name="format_drag">拖动%s到%s</string>
+    <string name="format_coordinate">(%1$d, %2$d)</string>
+    <string name="format_drag">拖动%1$s到%2$s</string>
     <string name="format_swipe_ui_object">在%s内滑动</string>
     <string name="specified_activity">指定页面</string>
     <string name="task_updated">任务已更新</string>
@@ -369,8 +375,8 @@
     <string name="format_mal_format">\"%s\"格式错误，请重新输入！</string>
     <string name="error_number_too_large">输入的值过大！</string>
     <string name="gesture_operations">手势操作</string>
-    <string name="format_swipe_args">方向: %s, 比例: %d%%, 速度: %d像素每秒</string>
-    <string name="format_scroll_args">方向: %s, 速度: %d</string>
+    <string name="format_swipe_args">方向: %1$s, 比例: %2$d%%, 速度: %3$d像素每秒</string>
+    <string name="format_scroll_args">方向: %1$s, 速度: %2$d</string>
     <string name="app_left">离开的应用</string>
     <string name="notification_owner_app">发送通知的应用</string>
     <string name="empty" translatable="false" />
@@ -391,9 +397,9 @@
     <string name="app">应用程序</string>
     <string name="global">全局</string>
     <string name="app_info">应用信息</string>
-    <string name="format_task_snapshots">历史运行记录（%d/%d）</string>
+    <string name="format_task_snapshots">历史运行记录（%1$d/%2$d）</string>
     <string name="no_task_snapshots">该任务没有运行记录</string>
-    <string name="format_task_snapshot_info_1"><![CDATA[<b>开始时间</b>: %s<br><b>结束时间</b>: %s<br><b>运行结果</b>: %s]]></string>
+    <string name="format_task_snapshot_info_1"><![CDATA[<b>开始时间</b>: %1$s<br><b>结束时间</b>: %2$s<br><b>运行结果</b>: %3$s]]></string>
     <string name="format_task_snapshot_info_2"><![CDATA[%1$s<br><b>用时</b>: %2$s]]></string>
     <string name="format_task_snapshot_info_3"><![CDATA[<b>开始时间</b>: <br>%s]]></string>
     <string name="succeeded">成功</string>
@@ -403,8 +409,8 @@
     <string name="not_executed_or_skipped">未执行</string>
     <string name="task_snapshots">运行记录</string>
     <string name="running">运行中</string>
-    <string name="is_certain_app">%s是%s</string>
-    <string name="not_is_certain_app">%s不是%s</string>
+    <string name="is_certain_app">%1$s是%2$s</string>
+    <string name="not_is_certain_app">%1$s不是%2$s</string>
     <string name="is_which_app">是哪个应用？</string>
     <string name="format_failure_value">错误值：%s</string>
     <string name="format_failure_exception">发生错误：%s</string>
@@ -456,7 +462,7 @@
     <string name="start_recording_gestures">开始录制手势</string>
     <string name="recorded_gestures">已录制的手势</string>
     <string name="format_gesture_duration">用时：%s</string>
-    <string name="format_gesture_desc">延时：%s，用时：%s</string>
+    <string name="format_gesture_desc">延时：%1$s，用时：%2$s</string>
     <string name="format_gesture_delay">延时：%s</string>
     <string name="perform_gesture">执行手势</string>
     <string name="playback">回放</string>
@@ -479,7 +485,7 @@
     <string name="tip_wait_for_idle">屏幕空闲指的是当前屏幕没有内容更新，比如滑动列表之后等待屏幕空闲，即可等待列表滚动停止。
 \n\n<b>空闲门槛</b>：即多长时间屏幕内容没有更新才被视为空闲，通常为100~500毫秒。
 \n<b>最多等待时长</b>：如果等待超过该时长仍然未检测到屏幕空闲，那么视为失败。</string>
-    <string name="format_wait_for_idle_desc">空闲门槛：%s，最多等待时长：%s</string>
+    <string name="format_wait_for_idle_desc">空闲门槛：%1$s，最多等待时长：%2$s</string>
     <string name="displayed_text">显示的文本</string>
     <string name="format_tip_selecting_referents">使用%s标注的引用项代表它已被设置标识，<b>长按</b>它可修改其标识。</string>
     <string name="highlight_color">强调色</string>
@@ -521,9 +527,9 @@
     <string name="i_have_paid">我已付款</string>
     <string name="has_updates">检测到新版本！</string>
     <string name="html_updates_info">
-        <![CDATA[<b>版本名: </b>%s<br/><br/>
-        <b>文件大小: </b>%s<br/><br/>
-        <b>更新内容: </b><br>%s]]>
+        <![CDATA[<b>版本名: </b>%1$s<br/><br/>
+        <b>文件大小: </b>%2$s<br/><br/>
+        <b>更新内容: </b><br>%3$s]]>
     </string>
     <string name="purchase_prompt"><b>1.</b> 订单创建后，若您在有效期限内未付款，订单将会自动失效，<b>失效后请勿付款</b>。
 \n<b>2.</b> 目前仅支持<b>支付宝</b>付款，如需其他渠道付款请联系我们。
@@ -605,7 +611,7 @@
     <string name="log">日志</string>
     <string name="save_to_storage">保存到本地</string>
     <string name="prompt_clear_snapshot_log">你确定要清空当前日志吗？</string>
-    <string name="format_snapshot_filename">[日志]%s-%s</string>
+    <string name="format_snapshot_filename">[日志]%1$s-%2$s</string>
     <string name="saved_to_storage">已保存到本地</string>
     <string name="tip_select_log_save_dir">请选择日志保存的文件夹</string>
     <string name="stopship_current_task">结束当前任务</string>
@@ -653,7 +659,7 @@
     <string name="share_this_task">分享此任务</string>
     <string name="view_uri">打开Uri</string>
     <string name="delete_file">删除文件</string>
-    <string name="format_copy_file">拷贝%s到%s</string>
+    <string name="format_copy_file">拷贝%1$s到%2$s</string>
     <string name="view_uri_via_package">用指定应用打开Uri</string>
     <string name="view_uri_via_component">用指定页面打开Uri</string>
     <string name="uri">Uri</string>
@@ -678,10 +684,10 @@
     <string name="on_file_deleted">当文件被删除时</string>
     <string name="tap_to_import_preset_tasks">点击此处导入预置任务</string>
     <string name="export_all_tasks">备份所有任务</string>
-    <string name="format_task_archive_name">[任务备份]%s%s</string>
+    <string name="format_task_archive_name">[任务备份]%1$s%2$s</string>
     <string name="import_all">导入全部</string>
     <string name="format_import_tasks_succeeded">%d个任务导入成功</string>
-    <string name="format_import_tasks_failed">%d个任务导入成功，%d个任务导入失败，因为已经存在完全相同的任务。</string>
+    <string name="format_import_tasks_failed">%1$d个任务导入成功，%2$d个任务导入失败，因为已经存在完全相同的任务。</string>
     <string name="in_specified_seconds">是指定几秒</string>
     <string name="not_in_specified_seconds">不是指定几秒</string>
     <string name="current_wifi_ssid_is">当前所连接的WIFI的名称是</string>
@@ -699,7 +705,7 @@
     <string name="on_network_available">当连接到网络时</string>
     <string name="on_network_unavailable">当网络连接断开时</string>
     <string name="network_status">网络状态</string>
-    <string name="format_move_file">移动%s到%s</string>
+    <string name="format_move_file">移动%1$s到%2$s</string>
     <string name="tip_copy_file">源文件将会被复制到目标文件的位置</string>
     <string name="tip_move_file">源文件将会被移动到目标文件的位置。如果目标文件是文件夹，那么源文件将会被移动到该文件夹下。</string>
     <string name="format_rename_file">重命名文件</string>
@@ -712,7 +718,7 @@
     <string name="error_vibration_duration">请输入震动时长</string>
     <string name="tip_vibration_pattern">震动将按照列表从上往下依次执行。\n震动时长的单位为毫秒（1秒=1000毫秒），震动强度的范围为1至255。</string>
     <string name="vibration_pattern">震动模式</string>
-    <string name="format_simple_vibration_pattern">震动时长:%s 震动强度:%s</string>
+    <string name="format_simple_vibration_pattern">震动时长:%1$s 震动强度:%2$s</string>
     <string name="custom_vibrate_pattern">已设置自定义震动模式</string>
     <string name="select_export_path">请选择导出位置</string>
     <string name="format_disable_package">冻结%s</string>

@@ -72,6 +72,10 @@ import java.util.zip.ZipInputStream
  */
 class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
 
+    companion object {
+        private const val COLD_START_SERVICE_STARTER_DELAY_MILLS = 1000L
+    }
+
     private val mainViewModel by viewModels<MainViewModel>()
 
     private val binding: ActivityMainBinding by lazy {
@@ -118,8 +122,24 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
 
     private lateinit var voiceCommandPermissionLauncher: ActivityResultLauncher<Array<String>>
 
+    private var shouldShowServiceStarterOnColdStart = false
+
+    private val showServiceStarterOnColdStartRunnable = Runnable {
+        if (!isFinishing
+            && !isDestroyed
+            && !supportFragmentManager.isStateSaved
+            && !serviceController.isServiceRunning
+            && mainViewModel.isServiceBinding.value != true
+            && supportFragmentManager.fragments.none { it is ServiceStarterDialog }
+        ) {
+            ServiceStarterDialog().show(supportFragmentManager)
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        shouldShowServiceStarterOnColdStart = savedInstanceState == null
+                && !(intent.action == Intent.ACTION_VIEW && intent.scheme == "content")
         val lightTheme = resources.getBoolean(R.bool.lightTheme)
         if ((lightTheme && Preferences.nightMode == AppCompatDelegate.MODE_NIGHT_YES)
             || (!lightTheme && Preferences.nightMode == AppCompatDelegate.MODE_NIGHT_NO)
@@ -155,6 +175,9 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
         DialogStackManager.setCallback(this)
         if (!Preferences.privacyPolicyAcknowledged) {
             PrivacyPolicyDialog().show(supportFragmentManager)
+            shouldShowServiceStarterOnColdStart = false
+        } else {
+            showServiceStarterOnColdStartIfNeeded()
         }
         if (intent.action == Intent.ACTION_VIEW && intent.scheme == "content") {
             mainViewModel.requestImportTask.value = intent
@@ -270,12 +293,22 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
         observe(mainViewModel.isServiceRunning) {
             binding.btnServiceControl.isActivated = it
             if (it) {
-                binding.btnServiceControl.setText(R.string.stop_service)
+                binding.btnServiceControl.setText(R.string.stop_service_short)
                 binding.btnServiceControl.setIconResource(R.drawable.ic_baseline_stop_24)
                 viewModel.listenTaskPauseStateChanges()
             } else {
-                binding.btnServiceControl.setText(R.string.start_service)
+                binding.btnServiceControl.setText(R.string.start_service_short)
                 binding.btnServiceControl.setIconResource(R.drawable.ic_baseline_play_arrow_24)
+            }
+        }
+        observe(VoiceCommandService.isRunning) {
+            binding.btnVoiceCommand.isActivated = it
+            if (it) {
+                binding.btnVoiceCommand.setText(R.string.stop_voice_command_short)
+                binding.btnVoiceCommand.setIconResource(R.drawable.ic_baseline_stop_24)
+            } else {
+                binding.btnVoiceCommand.setText(R.string.start_voice_command_short)
+                binding.btnVoiceCommand.setIconResource(R.drawable.ic_mic_24px)
             }
         }
         observeDialog(mainViewModel.serviceBindingError) {
@@ -387,7 +420,11 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
             }
         }
         binding.btnVoiceCommand.setNoDoubleClickListener {
-            requestStartVoiceCommandService()
+            if (it.isActivated) {
+                stopVoiceCommandService()
+            } else {
+                requestStartVoiceCommandService()
+            }
         }
         binding.fabAction.setNoDoubleClickListener {
             TaskCreatorDialog().show(supportFragmentManager)
@@ -446,6 +483,10 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
             Intent(this, VoiceCommandService::class.java).setAction(VoiceCommandService.ACTION_START)
         )
         toast(R.string.voice_command_listening)
+    }
+
+    private fun stopVoiceCommandService() {
+        stopService(Intent(this, VoiceCommandService::class.java))
     }
 
     @SuppressLint("MissingSuperCall")
@@ -512,5 +553,24 @@ class MainActivity : AppCompatActivity(), DialogStackManager.Callback {
             TaskListDialog().setTaskList(tasks).setTitle(R.string.import_tasks.text)
                 .show(supportFragmentManager)
         }
+    }
+
+    private fun showServiceStarterOnColdStartIfNeeded() {
+        if (!shouldShowServiceStarterOnColdStart) return
+        shouldShowServiceStarterOnColdStart = false
+        binding.root.doOnPreDraw {
+            binding.root.postDelayed(
+                showServiceStarterOnColdStartRunnable,
+                COLD_START_SERVICE_STARTER_DELAY_MILLS
+            )
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (shouldShowServiceStarterOnColdStart) {
+            shouldShowServiceStarterOnColdStart = false
+        }
+        binding.root.removeCallbacks(showServiceStarterOnColdStartRunnable)
     }
 }

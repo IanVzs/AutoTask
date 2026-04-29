@@ -82,6 +82,45 @@
 - 如果 AIDL 某个方法抛 `RemoteException`，见 `logcat | grep RemoteTaskManager`
 - 重启服务通常能恢复（右上角 toolbar）
 
+### 2.9 覆盖安装后仍然跑旧代码 / 行号不对
+
+**现象**
+
+- 刚安装新的 debug APK，但运行记录里的异常堆栈仍指向旧源码行号。
+- 修改了执行引擎或 Shizuku 服务相关代码后，主界面已是新包，单次任务仍表现为旧逻辑。
+- `adb shell ps -A` 里还能看到 `top.xjunz.tasker:service`，即使已经 `am force-stop top.xjunz.tasker`。
+
+**原因**
+
+Shizuku 的 UserService 是独立的远程进程，进程名为 `top.xjunz.tasker:service`。覆盖安装 APK 不一定会杀掉这个远程进程；如果服务版本没有变化，Shizuku 可能继续复用旧进程，导致 App 进程和特权进程运行的代码版本不一致。
+
+代码侧已在 `ShizukuAutomatorServiceController` 的 `UserServiceArgs.version(...)` 中为 debug 构建使用 APK 安装时间（秒级），避免同一个 `versionCode` 的 debug 包覆盖安装后复用旧服务；release 构建仍使用正常的 `BuildConfig.VERSION_CODE`。
+
+**手动处理**
+
+优先使用 Makefile：
+
+```bash
+make stop-service
+make run
+```
+
+或直接用 adb：
+
+```bash
+adb shell pidof top.xjunz.tasker:service
+adb shell kill <pid>
+adb shell monkey -p top.xjunz.tasker 1
+```
+
+如果有多台设备，给 Makefile 指定设备：
+
+```bash
+make stop-service DEVICE=<adb设备序列号>
+```
+
+处理后重新在 App 内启动自动化服务，再复现任务。
+
 ## 3. 构建 / 依赖问题
 
 | 现象 | 原因 | 解决 |

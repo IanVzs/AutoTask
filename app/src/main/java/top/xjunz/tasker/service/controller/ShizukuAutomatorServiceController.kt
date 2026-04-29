@@ -16,6 +16,7 @@ import android.os.SharedMemory
 import rikka.shizuku.Shizuku
 import top.xjunz.tasker.BuildConfig
 import top.xjunz.tasker.Preferences
+import top.xjunz.tasker.app
 import top.xjunz.tasker.engine.dto.toDTO
 import top.xjunz.tasker.ktx.whenAlive
 import top.xjunz.tasker.premium.PremiumMixin
@@ -33,6 +34,13 @@ object ShizukuAutomatorServiceController : ShizukuServiceController<ShizukuAutom
 
     private const val SERVICE_NAME_SUFFIX = "service"
 
+    private val userServiceVersion: Int
+        get() {
+            val lastUpdateTime = app.packageManager.getPackageInfo(app.packageName, 0).lastUpdateTime
+            val installedSeconds = (lastUpdateTime / 1000).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            return if (BuildConfig.DEBUG) installedSeconds else BuildConfig.VERSION_CODE
+        }
+
     override var service: ShizukuAutomatorService? = null
 
     var remoteService: IRemoteAutomatorService? = null
@@ -41,7 +49,9 @@ object ShizukuAutomatorServiceController : ShizukuServiceController<ShizukuAutom
         Shizuku.UserServiceArgs(
             ComponentName(BuildConfig.APPLICATION_ID, ShizukuAutomatorService::class.java.name)
         ).processNameSuffix(SERVICE_NAME_SUFFIX).debuggable(BuildConfig.DEBUG)
-            .version(BuildConfig.VERSION_CODE)
+            // Debug installs often keep the same VERSION_CODE. Using the APK install time keeps
+            // Shizuku from reusing a stale remote service after reinstalling a debug build.
+            .version(userServiceVersion)
 
     @SuppressLint("BlockedPrivateApi", "PrivateApi")
     override fun onServiceConnected(remote: IInterface) {

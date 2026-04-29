@@ -25,7 +25,7 @@ ADB_DEVICE := $(if $(DEVICE),-s $(DEVICE),)
 AVD ?=
 
 .PHONY: help env doctor wrapper tasks devices emulators emulator \
-	debug build release apk install install-apk reinstall uninstall run stop restart \
+	debug build release apk install install-apk reinstall uninstall run stop stop-service restart \
 	test unit-test connected-test lint clean clean-build logs logcat clear-logs
 
 help:
@@ -54,6 +54,7 @@ help:
 		'  make uninstall        通过 adb 从当前连接的真机/模拟器卸载 $(APP_ID)' \
 		'  make run              通过 adb 在当前连接的真机/模拟器上打开 $(APP_ID)' \
 		'  make restart          通过 adb 在当前连接的真机/模拟器上强停后重新打开 $(APP_ID)' \
+		'  make stop-service     杀掉 Shizuku 远程服务进程；覆盖安装后服务仍跑旧代码时使用' \
 		'  make logs             通过 adb 只看当前连接的真机/模拟器上 $(APP_ID) 进程日志' \
 		'  make logcat           通过 adb 查看当前连接的真机/模拟器全部日志，输出很多' \
 		'  make clear-logs       通过 adb 清空当前连接的真机/模拟器日志缓冲区' \
@@ -120,6 +121,15 @@ run:
 
 stop:
 	@$(ADB) $(ADB_DEVICE) shell am force-stop "$(APP_ID)"
+
+stop-service:
+	@pids="$$( $(ADB) $(ADB_DEVICE) shell pidof "$(APP_ID):service" 2>/dev/null | tr -d '\r' )"; \
+	if [ -n "$$pids" ]; then \
+		echo "正在结束 Shizuku 远程服务进程：$$pids"; \
+		$(ADB) $(ADB_DEVICE) shell kill $$pids || true; \
+	else \
+		echo "未发现正在运行的 Shizuku 远程服务进程。"; \
+	fi
 
 restart: stop run
 
