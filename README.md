@@ -1,7 +1,7 @@
 
 # AutoTask
 
-一款支持[Shizuku](https://github.com/RikkaApps/Shizuku)和辅助功能的**自动任务**工具，[点击下载体验最新版](https://fir.xcxwo.com/tasker)。
+一款支持[Shizuku](https://github.com/RikkaApps/Shizuku)和辅助功能的**自动任务**工具。
 
 ## 简介
 
@@ -67,10 +67,12 @@ keyPassword=xxx
 
 ## 注意事项
 
-本项目仅供学习交流使用，禁止用于商业用途或非法用途！
+请在开源协议约束范围内使用本项目，禁止用于非法用途。
 
 ## License
 
-本应用基于[Apache-2.0 License](https://github.com/xjunz/AutoSkip/blob/master/LICENSE)开源，请在开源协议约束范围内使用源代码 。
+本项目基于 [xjunz/AutoTask](https://github.com/xjunz/AutoTask) 派生，遵循 [Apache-2.0 License](LICENSE) 开源。分发或修改时请保留原始版权与许可证声明。
 
-*Copyright 2023 XJUNZ*
+*Original work Copyright 2023 xjunz*
+
+*Modifications Copyright 2026 AutoTask contributors*
