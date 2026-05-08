@@ -119,6 +119,19 @@ val disableBluetooth = appletOption(R.string.format_disable_bluetooth) {
    - 在工厂里根据 `compatMode` 透明替换
 4. 确保 `TaskStorage.loadAllTasks()` 命中版本分支后重新 `persistTask`（落新版本到磁盘）
 
+## 9. 新增 AI 能力
+
+AI 功能先作为现有任务系统的上层协作者，不直接绕过 `XTask` / `Applet` / `AutomatorService`。
+
+建议最小步骤：
+
+1. 在 `app/src/main/java/top/xjunz/tasker/ai/` 下新增 AI 模型、Provider 和 Agent 代码。
+2. Provider 层先抽象为 OpenAI-compatible HTTP 接口，配置项放在 `Preferences` 和设置页，不把 API Key 写进源码。
+3. Agent 层输出受控 DTO，例如 `AiIntent` / `AiTaskDraft`，不要让模型自由输出 Kotlin、Shell 或未校验 JSON。
+4. 任务草稿转换为 `Flow` / `Applet` 前必须做 schema 校验、风险分级和兼容性检查。
+5. 涉及执行、保存、危险动作或上传敏感上下文时，必须让用户确认。
+6. 更新 `14-ai-integration.md`，并同步 `01-overview.md`、`02-architecture.md`、`07-ui-architecture.md`、`08-build-config-premium.md` 中受影响章节。
+
 ## 9. 新增一个 UI 对话框（通用流程）
 
 1. 新建 `ui/.../XxDialog.kt`：

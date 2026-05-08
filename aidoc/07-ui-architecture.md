@@ -105,6 +105,13 @@
 - 任务执行：当前只支持一次性任务（`XTask.TYPE_ONESHOT`）。匹配到一次性任务后复用现有入口：`LocalTaskManager.addOneshotTaskIfAbsent(task)` + `currentService.scheduleOneshotTask(...)`。匹配到常驻任务时只提示，不直接启用或运行。
 - 结果展示：`VoiceCommandService.uiState` 输出 `VoiceCommandUiState` 和倒序 `VoiceCommandRecord`；`VoiceCommandFragment` 展示当前状态、最近识别文本、解析命令、匹配任务和执行记录。toast 和前台通知仍保留为即时反馈。
 
+AI 接入预留：
+
+- 语音页已经具备展示“识别文本、解析命令、匹配任务、执行结果”的状态区域，后续可以在这条状态流中插入 AI 理解步骤。
+- AI 不应直接绕过 `VoiceCommandService` 执行系统动作。建议先让 AI 输出结构化意图，再由本地代码匹配现有任务或生成任务草稿。
+- 任务草稿必须进入编辑器预览和用户确认，不要让 AI 在后台直接保存或运行新任务。
+- 详细设计见 `14-ai-integration.md`。
+
 阿里云 ASR 的 `AppKey` 与 `Token` 获取：
 
 - 本 App 是免费分发的工具，不提供作者账号下的付费云识别服务，也不会内置共享 `AppKey`、`AccessKey`、`Token` 或云服务额度。使用阿里云 ASR 时，使用者需要自行开通 / 购买阿里云智能语音交互服务，并在 App 设置页填写自己的服务信息。
