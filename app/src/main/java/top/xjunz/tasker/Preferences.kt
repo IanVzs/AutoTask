@@ -52,6 +52,22 @@ object Preferences {
 
     var speechRecognitionTokenExpireTime by global.primitive("speech_recognition_token_expire_time", 0L)
 
+    var aiEnabled by global.primitive("ai_enabled", false)
+
+    var aiProviderBaseUrl by global.nullable<String>("ai_provider_base_url", "https://api.deepseek.com")
+
+    var aiProviderApiKey by global.nullable<String>("ai_provider_api_key", null)
+
+    var aiProviderModel by global.nullable<String>("ai_provider_model", "deepseek-chat")
+
+    var aiProviderTemperature by global.primitive("ai_provider_temperature", 0.2f)
+
+    var aiProviderMaxTokens by global.primitive("ai_provider_max_tokens", 512)
+
+    var aiRequestTimeoutMillis by global.primitive("ai_request_timeout_millis", 8000)
+
+    var aiVoiceMinConfidence by global.primitive("ai_voice_min_confidence", 0.6f)
+
     private fun <T> SharedPreferences.nullable(
         name: String,
         defValue: T?

@@ -12,8 +12,8 @@ import android.util.Log
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import rikka.shizuku.Shizuku
-import top.xjunz.shared.utils.runtimeException
 import top.xjunz.tasker.premium.PremiumMixin
 import top.xjunz.tasker.service.isPremium
 import top.xjunz.tasker.util.ShizukuUtil
@@ -27,6 +27,12 @@ abstract class ShizukuServiceController<S : Any> : ServiceController<S>() {
 
     companion object {
         private const val BINDING_SERVICE_TIMEOUT_MILLS = 3000L
+
+        // 覆盖安装/版本升级后，Shizuku 会重启 :service 远程进程；
+        // 在新旧进程交接的瞬间，回调过来的 binder 可能已死。
+        // 这种情况我们做有限次自动重试，让用户无感。
+        private const val MAX_INVALID_BINDER_RETRY = 2
+        private const val INVALID_BINDER_RETRY_DELAY_MILLS = 800L
     }
 
     protected abstract val tag: String
@@ -38,6 +44,10 @@ abstract class ShizukuServiceController<S : Any> : ServiceController<S>() {
     protected abstract fun onServiceConnected(remote: IInterface)
 
     private var bindingJob: Job? = null
+
+    private var invalidBinderRetryJob: Job? = null
+
+    private var invalidBinderRetryCount = 0
 
     protected var serviceInterface: IInterface? = null
 
@@ -55,13 +65,15 @@ abstract class ShizukuServiceController<S : Any> : ServiceController<S>() {
             try {
                 bindingJob?.cancel()
                 if (ibinder == null || !ibinder.pingBinder()) {
-                    runtimeException("Got an invalid binder!")
-                } else {
-                    ibinder.linkToDeath(deathRecipient, 0)
-                    asInterface(ibinder).also {
-                        serviceInterface = it
-                        onServiceConnected(it)
-                    }
+                    handleInvalidBinder()
+                    return
+                }
+                invalidBinderRetryCount = 0
+                invalidBinderRetryJob?.cancel()
+                ibinder.linkToDeath(deathRecipient, 0)
+                asInterface(ibinder).also {
+                    serviceInterface = it
+                    onServiceConnected(it)
                 }
             } catch (t: Throwable) {
                 listener?.onError(t)
@@ -69,6 +81,35 @@ abstract class ShizukuServiceController<S : Any> : ServiceController<S>() {
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {}
+    }
+
+    private fun handleInvalidBinder() {
+        if (invalidBinderRetryCount < MAX_INVALID_BINDER_RETRY) {
+            invalidBinderRetryCount++
+            Log.w(
+                tag,
+                "Got an invalid binder, auto retry #$invalidBinderRetryCount in" +
+                    " ${INVALID_BINDER_RETRY_DELAY_MILLS}ms"
+            )
+            invalidBinderRetryJob?.cancel()
+            invalidBinderRetryJob = launch {
+                delay(INVALID_BINDER_RETRY_DELAY_MILLS)
+                bindService()
+            }
+            return
+        }
+        val finalCount = invalidBinderRetryCount
+        invalidBinderRetryCount = 0
+        Log.w(tag, "Got an invalid binder after $finalCount retries")
+        listener?.onError(
+            RuntimeException("Got an invalid binder after $finalCount retries")
+        )
+    }
+
+    private fun cancelInvalidBinderRetry() {
+        invalidBinderRetryJob?.cancel()
+        invalidBinderRetryJob = null
+        invalidBinderRetryCount = 0
     }
 
     protected open fun onServiceConnectionError() {
@@ -101,6 +142,7 @@ abstract class ShizukuServiceController<S : Any> : ServiceController<S>() {
     }
 
     override fun stopService() {
+        cancelInvalidBinderRetry()
         Shizuku.unbindUserService(
             userServiceStandaloneProcessArgs, userServiceConnection, true
         )
@@ -116,6 +158,7 @@ abstract class ShizukuServiceController<S : Any> : ServiceController<S>() {
     }
 
     override fun unbindService() {
+        cancelInvalidBinderRetry()
         removeStateListener()
         serviceInterface?.asBinder()?.unlinkToDeath(deathRecipient, 0)
         Shizuku.unbindUserService(userServiceStandaloneProcessArgs, userServiceConnection, false)

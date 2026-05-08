@@ -121,6 +121,35 @@ make stop-service DEVICE=<adb设备序列号>
 
 处理后重新在 App 内启动自动化服务，再复现任务。
 
+### 2.10 覆盖安装后启动服务报 `Got an invalid binder!`
+
+**现象**
+
+- 覆盖安装新版本（debug 或 release）后，第一次打开 App 启动 Shizuku 服务，崩溃日志或反馈邮件里出现：
+
+  ```
+  java.lang.RuntimeException: Got an invalid binder!
+      at top.xjunz.tasker.service.controller.ShizukuServiceController$userServiceConnection$1.onServiceConnected(...)
+  ```
+- App 不会闪退；通常再点一次"启动服务"就能成功。
+
+**原因**
+
+Shizuku 的 `UserService` 通过 `UserServiceArgs.version(...)` 决定是否要重启远程 `:service` 进程。版本号变了（debug 用 `lastUpdateTime`、release 用 `versionCode`），Shizuku 会杀旧进程、起新进程；在新旧进程交接的瞬间，回调到 App 的 binder 可能已经是死的，`pingBinder()` 返回 false。
+
+这是 Shizuku UserService 重启策略带来的固有时序问题，App 自身代码没有错。
+
+**当前实现**
+
+`ShizukuServiceController.userServiceConnection.onServiceConnected` 检测到 invalid binder 时，会：
+
+1. 记录一条 `Got an invalid binder, auto retry #N` 警告日志。
+2. 间隔 `INVALID_BINDER_RETRY_DELAY_MILLS`（默认 800ms）后自动重新 `bindService()`，相当于替用户再点一次"启动服务"。
+3. 最多重试 `MAX_INVALID_BINDER_RETRY` 次（默认 2 次），仍失败才抛 `RuntimeException("Got an invalid binder after N retries")` 给 `listener.onError`，让 UI 报错给用户。
+4. 成功连接后清零计数；`stopService` / `unbindService` 时取消正在等待的 retry。
+
+调整重试参数请改 `ShizukuServiceController.MAX_INVALID_BINDER_RETRY` 和 `INVALID_BINDER_RETRY_DELAY_MILLS`；如果想在覆盖安装时减少触发概率，可以保留对 `stop-service` 的手动处理。
+
 ## 3. 构建 / 依赖问题
 
 | 现象 | 原因 | 解决 |

@@ -149,6 +149,16 @@ debug 构建 `versionName` 自动后缀 `-debug`。
 
 HTTPS 用 `ktor-client-cio`；没有自定义 TrustManager / SSL pinning。
 
+### 8.0 AI Provider 配置
+
+AI Provider 第一版采用 OpenAI-compatible HTTP 接口，不新增固定服务商依赖。配置入口在"更多"页的"AI 驱动"：
+
+- Base URL、API Key、模型名、启用开关、温度、最大输出 tokens、请求超时和语音理解最低置信度保存在 `Preferences`，不写入源码。
+- 请求骨架位于 `ai/provider/OpenAiCompatibleProvider.kt`，默认访问 `<baseUrl>/chat/completions`。
+- API Key 由用户自行提供，可为空以支持本机或内网兼容服务。
+- 当前默认值面向短文本意图理解：Base URL `https://api.deepseek.com`、模型名 `deepseek-chat`、温度 `0.2`、最大输出 `512` tokens、超时 `8000ms`、最低置信度 `0.6`。
+- Provider 只负责模型请求；AI 行动仍必须经过 `AiActionPlan`、`AiActionGate` 和现有任务执行管道。
+
 ### 8.1 更新检查逻辑
 
 更新检查是**手动触发**的：打开设置/关于页里的“版本信息”对话框，点击“检查更新”按钮后，`VersionInfoDialog` 调用 `MainViewModel.checkForUpdates()`。不要在 `MainActivity.onCreate()` 中自动调用 `checkForUpdates()`，否则 App 启动后会在 `app.updateInfo` 返回新版本时立即弹出“检测到新版本！”。
