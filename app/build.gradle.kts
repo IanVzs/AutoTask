@@ -25,7 +25,7 @@ val localProperties = Properties().apply {
         localPropertiesFile.inputStream().use(::load)
     }
 }
-val hasXjunzSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
+val hasCustomSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
     .all { !localProperties.getProperty(it).isNullOrBlank() }
 
 android {
@@ -38,8 +38,8 @@ android {
     }
 
     signingConfigs {
-        if (hasXjunzSigning) {
-            create("xjunz") {
+        if (hasCustomSigning) {
+            create("custom") {
                 storeFile = file(localProperties.getProperty("storeFile"))
                 storePassword = localProperties.getProperty("storePassword")
                 keyAlias = localProperties.getProperty("keyAlias")
@@ -73,15 +73,15 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            if (hasXjunzSigning) {
-                signingConfig = signingConfigs.getByName("xjunz")
+            if (hasCustomSigning) {
+                signingConfig = signingConfigs.getByName("custom")
             }
         }
         debug {
             isDebuggable = true
             isMinifyEnabled = false
-            if (hasXjunzSigning) {
-                signingConfig = signingConfigs.getByName("xjunz")
+            if (hasCustomSigning) {
+                signingConfig = signingConfigs.getByName("custom")
             }
         }
     }

@@ -27,8 +27,6 @@ import java.util.concurrent.ConcurrentLinkedDeque
 /**
  * The abstraction of an automation task.
  *
- * **XTask** is the abbr. of "XJUNZ-TASK", rather cool isn't it? :)
- *
  * @author xjunz 2022/07/12
  */
 class XTask : ValueRegistry() {

@@ -131,7 +131,7 @@
     <string name="check_for_updates">检查更新</string>
     <string name="mail_subject">「自动任务」反馈 %s</string>
     <string name="mail_body">%s\n问题描述:\n</string>
-    <string name="cr">本应用以Apache-2.0协议<a href='https://github.com/xjunz/AutoTask'>开放源代码</a>\nCopyright © XJUNZ 2023\n\n了解我们的<a href='xtsk://privacy_policy'>《隐私政策》</a></string>
+    <string name="cr">本应用以Apache-2.0协议<a href='https://github.com/IanVzs/AutoTask'>开放源代码</a>\nOriginal work © xjunz 2023\nModifications © IanVzs 2026\n\n了解我们的<a href='xtsk://privacy_policy'>《隐私政策》</a></string>
     <string name="no_log">无日志</string>
     <string name="feedback_group">加群</string>
     <string name="feedback_email">邮件</string>

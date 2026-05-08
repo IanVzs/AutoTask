@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026 xjunz. All rights reserved.
+ * Copyright (c) 2026 IanVzs. All rights reserved.
  */
 
 package top.xjunz.tasker.voice
