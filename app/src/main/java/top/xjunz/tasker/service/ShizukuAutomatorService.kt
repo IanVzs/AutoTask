@@ -200,6 +200,17 @@ class ShizukuAutomatorService : IRemoteAutomatorService.Stub, AutomatorService {
         )
     }
 
+    @Local
+    @Privileged
+    override fun getLastAgentDiagnostic(): String {
+        // main 端走 AIDL 拉特权进程的诊断；特权进程内直接读本地 dispatcher 单例
+        return if (isAppProcess) {
+            runCatching { delegate.getLastAgentDiagnostic() }.getOrDefault("")
+        } else {
+            AgentActionDispatcher.getLastDiagnostic()
+        }
+    }
+
     @Privileged
     override fun stopOneshotTask(id: Long) {
         PrivilegedTaskManager.requireTask(id).halt(true)

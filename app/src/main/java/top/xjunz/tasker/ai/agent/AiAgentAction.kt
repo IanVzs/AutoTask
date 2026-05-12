@@ -39,6 +39,51 @@ data class AiAgentActionDto(
     val planStatus: String? = null
 )
 
+/**
+ * **Structured ReAct 响应**（aidoc/18 §3.A）。
+ *
+ * 强制 AI 按 Observation → Reflection → Action 三段输出，让"读快照 + 反思"成为
+ * **生成 action 的前置硬步骤**，而不是事后写在 thought 里的解释。
+ *
+ * 字段顺序在 prompt 里就明确写好——LLM 在自然推理时按字段顺序生成，先写的内容
+ * 比后写的更"想清楚"。比堆 prompt 行为准则有效得多。
+ *
+ * 兼容退化：如果 AI 没输出新结构（直接输出老的 ActionDto），parser 会兜底解析成
+ * `observation/lastActionReview/reflection = null` + 老 action，session 仍能跑。
+ */
+@Serializable
+data class AiAgentReactResponseDto(
+    /**
+     * 必填。AI 看完当前 snapshot 后写下"我看到什么"——activity / 关键节点 / 上一步执行后 UI 变化等。
+     * 强制 AI 在写 action 之前**先读快照**——这是治"AI 不读现场" 病火的核心。
+     */
+    val observation: String? = null,
+    /**
+     * 必填。对照上一步 action 实际结果与你当时的预期，回答"上一步真的做到我以为的事了吗"。
+     * 强制 AI 反思——治"AI 死循环不反思"病火。
+     */
+    @kotlinx.serialization.SerialName("last_action_review")
+    val lastActionReview: String? = null,
+    /**
+     * 必填。基于 observation + last_action_review 推理出"下一步该往哪个方向走"，2-4 句。
+     * 跟 thought 的差别：thought 只是 action 的事后解释；reflection 是 action 的依据。
+     */
+    val reflection: String? = null,
+    /** 真正要执行的动作。schema 跟旧 [AiAgentActionDto] 完全一样。 */
+    val action: AiAgentActionDto? = null,
+    /** 兼容退化：AI 把字段直接塞顶层（type/target 等）时这些字段非空，按老格式解析。 */
+    val type: String? = null,
+    val packageName: String? = null,
+    val target: AiUiTarget? = null,
+    val text: String? = null,
+    val seconds: Int? = null,
+    val summary: String? = null,
+    val reason: String? = null,
+    val thought: String? = null,
+    @kotlinx.serialization.SerialName("plan_status")
+    val planStatus: String? = null
+)
+
 object AiAgentActionType {
     const val LAUNCH_APP = "launch_app"
     const val CLICK = "click"
@@ -256,5 +301,13 @@ data class AiAgentStepRecord(
      * silent-fail 提示追加到 [result.message]，下一轮 prompt 让 AI 看见并改换策略。
      * `null` 表示当时拿不到 snapshot（极少数情况），不参与比对。
      */
-    val preActionSignature: String? = null
+    val preActionSignature: String? = null,
+    /**
+     * Structured ReAct 三段（aidoc/18 §3.A）。AI 在生成 action 之前**强制**先写下的思考。
+     * 写进 history 喂回下一轮 prompt 让 AI 看见自己的思维链路（链式 self-consistency）。
+     * null = AI 没遵守新格式（兼容退化），上层不影响。
+     */
+    val observation: String? = null,
+    val lastActionReview: String? = null,
+    val reflection: String? = null
 )

@@ -286,6 +286,8 @@ class A11yAutomatorService : AccessibilityService(), AutomatorService, IUiAutoma
         )
     }
 
+    override fun getLastAgentDiagnostic(): String = AgentActionDispatcher.getLastDiagnostic()
+
     override fun onInterrupt() {
 
     }

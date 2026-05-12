@@ -90,6 +90,13 @@ interface AutomatorService {
         callback: ITaskCompletionCallback
     )
 
+    /**
+     * 拉执行端进程最近一次 [executeAgentActionByTarget] 的诊断信息（aidoc/18 §3.E.2 + §3.D）。
+     * 失败时返回精细原因（哪些字段不符 / 节点 isEditable=false 等），main 端写进 step.result.message。
+     * 没有最近诊断时返回 ""。
+     */
+    fun getLastAgentDiagnostic(): String
+
     fun scheduleOneshotTask(task: XTask, onCompletion: ITaskCompletionCallback)
 
     fun stopOneshotTask(task: XTask)

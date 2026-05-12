@@ -56,21 +56,29 @@ object AiActionToTask {
         AppletOptionFactory.preloadIfNeeded()
         val factory = AppletOptionFactory
         val root = factory.flowRegistry.rootFlow.yield() as RootFlow
-        // preloadFlow 必须出现并显式 setReferent，给 containsUiObject 提供 "current_top_app" 与
-        // "current_window" 这两个 root 输入；否则 containsUiObject 会拿不到 root → applet 抛异常。
-        // 这两个 referent 名字与 inspector "AUTO_CLICK" 路径完全一致（FlowEditorViewModel.QUICK_TASK_CREATOR_AUTO_CLICK）。
+        // **真因修复 5/11 18:21**（aidoc/19 §F6 重新诊断）：
+        // task 树必须跟 inspector default flow 严格一致 —— RootFlow + preloadFlow + **ifFlow（空）** + doFlow。
+        //
+        // 真实跑通条件（源码层面）：
+        //   - TaskRuntime.isSuccessful 初值 = true（不是我之前以为的 false）
+        //   - TaskRuntime.ifSuccessful 初值 = null
+        //   - Do.shouldBeSkipped() 看的是 `runtime.ifSuccessful != true`，**跟 Do.relation 完全无关**
+        //   - 没有 If 跑过 → ifSuccessful 始终是 null → Do 永远被 skip
+        //   - 空 ifFlow 跑完 → If.onPostApply 写 ifSuccessful = isSuccessful（默认 true）→ Do 不 skip
+        //
+        // 之前我设 `doFlow.relation = REL_ANYWAY` 完全没用——shouldBeSkipped 在 relation gate 之前检查。
+        // 这就是 5/11 测试里 GlobalBack/Home 的 task 报 OK 但屏幕没变的真因：pressBack 根本没跑。
         val preloadFlow = factory.flowRegistry.preloadFlow.yield()
         root.add(preloadFlow)
         val rootEditor = AppletReferenceEditor(false)
         rootEditor.setReferent(preloadFlow, 0, R.string.current_top_app.str)
         rootEditor.setReferent(preloadFlow, 3, R.string.current_window.str)
 
+        // 关键：加一个空 ifFlow，让 ifSuccessful 变成 true，保证 Do 能跑
+        val ifFlow = factory.flowRegistry.ifFlow.yield()
+        root.add(ifFlow)
+
         val doFlow = factory.flowRegistry.doFlow.yield() as Do
-        // Do 默认 relation=REL_AND，需要上一个 sibling isSuccessful=true 才跑。
-        // 但 preloadFlow children 为空，applyFlow 直接 return 保留入口 isSuccessful=false（task 初值），
-        // 导致 Do 被 Flow.applyFlow:41 的 relation gate 跳过。
-        // 强制 Do.relation=REL_ANYWAY 让它无条件跑。Do 的 setter 继承自 ControlFlow，仅允许 REL_ANYWAY。
-        doFlow.relation = Applet.REL_ANYWAY
         root.add(doFlow)
 
         val (titleRaw, ok) = when (action) {

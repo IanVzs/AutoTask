@@ -16,7 +16,9 @@ import top.xjunz.tasker.engine.task.XTask
 import top.xjunz.tasker.task.applet.option.AppletOptionFactory
 import top.xjunz.tasker.task.applet.option.registry.BootstrapOptionRegistry
 import top.xjunz.tasker.task.applet.option.registry.UiObjectActionRegistry
+import top.xjunz.tasker.task.applet.value.SwipeMetrics
 import top.xjunz.tasker.task.editor.AppletReferenceEditor
+import androidx.test.uiautomator.Direction
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -38,6 +40,8 @@ object AiAgentTaskAssembler {
     const val ACTION_CLICK = 1
     const val ACTION_LONG_CLICK = 2
     const val ACTION_SET_TEXT = 3
+    /** swipe = scroll target node。extraText 形如 "down:0.5:1000"（direction:percent:speed）。 */
+    const val ACTION_SWIPE = 4
 
     /**
      * 给临时 task 一个全局唯一 checksum；用 nanoTime 当种子保证不同步并发不冲突。
@@ -116,10 +120,18 @@ object AiAgentTaskAssembler {
         root.add(preloadFlow)
         editor.setReferent(preloadFlow, 3, REFERENT_CURRENT_WINDOW)
 
-        // 3. NodeCriteriaExtractor 抽完整 criteria（默认勾选）
+        // 3. **NodeCriteriaExtractor 只取语义字段**（aidoc/19 §F1 修法：F1 P1+P2）。
+        //    inspector 用户挑节点时可手动勾/反勾任意 criteria；AI agent 没法手动取消，
+        //    若用「默认勾选全集」会带来：
+        //      - P1：状态字段（isClickable/isLongClickable/isCheckable/isChecked/isEditable/isEnabled）
+        //        让 containsUiObject 二次定位太严，节点状态稍微变就匹不中
+        //      - P2：isChecked 陷阱——节点 isCheckable=true 但 isChecked=false 时仍加 isChecked=true
+        //        条件，让所有未选中的复选框节点永远匹不中
+        //    findRealNode 已经按弱字段在 root 上匹中过节点了；这里只用语义字段（id/text/desc/className）
+        //    做二次定位即足够区分该节点，状态字段反而是噪音。
         val extracted = NodeCriteriaExtractor.extract(node)
         val checkedCriteria = extracted.criteria.filterIndexed { i, _ ->
-            i !in extracted.defaultUncheckedIndices
+            i in extracted.semanticIndices
         }
         if (checkedCriteria.isEmpty()) return null
 
@@ -146,6 +158,13 @@ object AiAgentTaskAssembler {
             ACTION_SET_TEXT -> {
                 val text = extraText ?: return null
                 actionRegistry.setText.yield(1 to text)
+            }
+            ACTION_SWIPE -> {
+                // extraText 编码：「direction:percent:speed」，例如 "down:0.5:1000"
+                // 解析失败用合理默认值（down/0.5/1000）保证 fallback work
+                val (dir, pct, spd) = parseSwipeExtra(extraText)
+                val swipeLong = SwipeMetrics(dir, pct, spd).compose()
+                actionRegistry.swipe.yieldWithFirstValue(swipeLong)
             }
             else -> return null
         }
@@ -175,7 +194,22 @@ object AiAgentTaskAssembler {
         ACTION_CLICK -> "click"
         ACTION_LONG_CLICK -> "long_click"
         ACTION_SET_TEXT -> "set_text"
+        ACTION_SWIPE -> "swipe"
         else -> "unknown"
+    }
+
+    /** 把 "down:0.5:1000" 解析成 (Direction, percent, speed)；坏数据用默认值兜底。 */
+    private fun parseSwipeExtra(extra: String?): Triple<Direction, Float, Int> {
+        val parts = extra.orEmpty().split(":")
+        val dir = when (parts.getOrNull(0)?.lowercase()) {
+            "up" -> Direction.UP
+            "left" -> Direction.LEFT
+            "right" -> Direction.RIGHT
+            else -> Direction.DOWN  // 默认下滑（最常见浏览动作）
+        }
+        val pct = parts.getOrNull(1)?.toFloatOrNull()?.coerceIn(0.05f, 1f) ?: 0.5f
+        val spd = parts.getOrNull(2)?.toIntOrNull()?.coerceIn(100, 99999) ?: 1000
+        return Triple(dir, pct, spd)
     }
 
     private fun nextChecksum(): Long = checksumCounter.incrementAndGet()

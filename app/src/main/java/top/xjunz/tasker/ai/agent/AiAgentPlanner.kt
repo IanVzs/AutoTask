@@ -115,7 +115,18 @@ object AiAgentPlanner {
          * 由 [AiAgentSession] 维护并传入；planner 负责把它放进 prompt 顶部的"禁选区"，让 AI 显式
          * 看见"这些 target 已经试过没反应——绝对禁止再选"。
          */
-        deadTargets: List<String> = emptyList()
+        deadTargets: List<String> = emptyList(),
+        /**
+         * **C 长期失败策略记忆**（aidoc/18 §3.C）。比 deadTargets 更广义——同方向尝试（pkg+activity+actionType）
+         * 的失败次数 + 最近一次诊断；让 AI 看到"这条路堵了"而不只是"这个 target 拉黑了"。
+         */
+        failedStrategies: List<String> = emptyList(),
+        /**
+         * **B Stuck Detection** 当前无进展步数（aidoc/18 §3.B）。
+         * ≥ [stuckThreshold] 时 prompt 加 STUCK 警示要求 AI 强制反思 + 换方向。
+         */
+        stuckHits: Int = 0,
+        stuckThreshold: Int = 3
     ): AiAgentNextActionResult {
         val provider = AiProviderFactory.createConfiguredProvider()
         if (provider == null) {
@@ -127,7 +138,7 @@ object AiAgentPlanner {
                 providerError = "provider_unconfigured"
             )
         }
-        val prompt = buildNextActionPrompt(userGoal, history, snapshot, plan, maxSteps, deadTargets)
+        val prompt = buildNextActionPrompt(userGoal, history, snapshot, plan, maxSteps, deadTargets, failedStrategies, stuckHits, stuckThreshold)
         AiAgentLog.i(
             "nextAction",
             "step=${history.size} pkg=${snapshot?.packageName} nodes=${snapshot?.nodes?.size ?: 0} → 请求"
@@ -139,16 +150,53 @@ object AiAgentPlanner {
                 val response = provider.complete(prompt)
                 rawResponse = response.text
                 AiAgentLog.d("nextAction.response", response.text)
-                val dto = AiJson.decodeFromString<AiAgentActionDto>(extractJson(response.text))
-                val action = AiAgentAction.fromDto(dto)
+                val jsonText = extractJson(response.text)
+                // **Structured ReAct 解析**：先按新外层 schema 解析；retry 老格式作为兼容退化
+                val reactDto = runCatching {
+                    AiJson.decodeFromString<AiAgentReactResponseDto>(jsonText)
+                }.getOrNull()
+                val actionDto: AiAgentActionDto
+                val obs: String?
+                val review: String?
+                val refl: String?
+                when {
+                    reactDto?.action != null -> {
+                        actionDto = reactDto.action
+                        obs = reactDto.observation
+                        review = reactDto.lastActionReview
+                        refl = reactDto.reflection
+                    }
+                    reactDto != null && reactDto.type != null -> {
+                        // 兼容退化：AI 把 type 等字段放在外层（旧格式直接输出）
+                        actionDto = AiAgentActionDto(
+                            type = reactDto.type, packageName = reactDto.packageName, target = reactDto.target,
+                            text = reactDto.text, seconds = reactDto.seconds, summary = reactDto.summary,
+                            reason = reactDto.reason, thought = reactDto.thought, planStatus = reactDto.planStatus
+                        )
+                        obs = reactDto.observation
+                        review = reactDto.lastActionReview
+                        refl = reactDto.reflection
+                    }
+                    else -> {
+                        // 完全 fallback：直接解析成老 ActionDto
+                        actionDto = AiJson.decodeFromString<AiAgentActionDto>(jsonText)
+                        obs = null; review = null; refl = null
+                    }
+                }
+                val action = AiAgentAction.fromDto(actionDto)
                 AiAgentLog.i(
                     "nextAction",
-                    "解析成功 → ${describeAction(action)} [plan=${action.planStatus ?: "?"}] // ${action.thought.orEmpty()}"
+                    "解析成功 → ${describeAction(action)} [plan=${action.planStatus ?: "?"}] " +
+                            "obs=${obs?.take(60).orEmpty()} | review=${review?.take(60).orEmpty()} | " +
+                            "reflection=${refl?.take(60).orEmpty()}"
                 )
                 AiAgentNextActionResult(
                     action = action,
                     prompt = prompt,
-                    rawResponse = response.text
+                    rawResponse = response.text,
+                    observation = obs,
+                    lastActionReview = review,
+                    reflection = refl
                 )
             }
         }.getOrElse { error ->
@@ -165,6 +213,7 @@ object AiAgentPlanner {
             )
         }
     }
+
 
     // ---------- prompt 构造 ----------
 
@@ -209,84 +258,108 @@ $userGoal
         snapshot: AiUiSnapshot?,
         plan: AiAgentSessionPlan?,
         maxSteps: Int,
-        deadTargets: List<String>
+        deadTargets: List<String>,
+        failedStrategies: List<String>,
+        stuckHits: Int,
+        stuckThreshold: Int
     ): String {
         val historySection = buildHistorySection(history)
         val snapshotSection = buildSnapshotSection(snapshot)
         val planSection = buildPlanSection(plan, history.size, maxSteps)
-        // 黑名单段：把"试过且没反应"的 target 摆在 prompt 最显眼位置，比 history 里夹杂的 ⚠ 更硬核。
+        // 禁选区：精确 target hash 拉黑（再输出会被 session 拒收）
         val blacklistSection = if (deadTargets.isEmpty()) "" else buildString {
             appendLine()
-            appendLine("⛔ 禁选目标（这些 target 在当前界面已经被尝试过且没有任何反应——再选一次也是浪费）：")
+            appendLine("⛔ 禁选目标（精确 target，session 兜底拒收）：")
             deadTargets.forEach { appendLine("  - $it") }
-            appendLine("**绝对禁止**输出 target 等价于上面任何一项的动作；必须换其他节点 / scroll / wait / give_up。")
+            appendLine("绝对禁止输出 target 等价于上面任何一项的动作；session 会硬拒。")
+        }.trimEnd()
+        // **C 长期失败策略记忆**：比禁选区更广义，让 AI 看到"这条路已经堵了"
+        val failedSection = if (failedStrategies.isEmpty()) "" else buildString {
+            appendLine()
+            appendLine("⚠ 已尝试且失败的策略（不要再走同一方向，换别的路）：")
+            failedStrategies.take(8).forEach { appendLine("  - $it") }
+            if (failedStrategies.size > 8) appendLine("  ...（共 ${failedStrategies.size} 条，省略其余）")
+        }.trimEnd()
+        // **B Stuck Detection 警示**：达到阈值时强制 AI 在 reflection 里宣告"我意识到困住了"+ 给完全不同方向
+        val stuckSection = if (stuckHits < stuckThreshold) "" else buildString {
+            appendLine()
+            appendLine("🚨 STUCK 警示：你已经连续 $stuckHits 步无进展（阈值 $stuckThreshold）。")
+            appendLine("**本步必须**做以下两件事之一，不要再用同方向尝试硬撑：")
+            appendLine("  ① 在 reflection 里**显式承认**「我意识到我困住了，原因是 X」+ 给一个**跟之前完全不同方向**的 action（比如改用 global_back / scroll / 完全不同的 target / 完全不同的 App 入口）；")
+            appendLine("  ② 直接 give_up，让用户接管。")
+            appendLine("**禁止**：再选一遍 deadTargets / failed strategies 里的任何东西，或换 className 但保持 text 不变这种伪'换方向'。")
         }.trimEnd()
         return """
-你是 Android 自动化应用「AutoTask」内嵌的 UI agent，正在分步骤帮用户完成一个目标。
-你将看到：用户目标、开场时你自己出的会话规划、过去几步执行结果、当前屏幕的可交互节点。
-**你只输出"下一步要做什么"的一个动作，严格 JSON，不要 markdown，不要解释**。
+你是 Android 自动化应用「AutoTask」内嵌的 UI agent。每次给你「用户目标 + 会话规划 + 过去步骤 + 当前屏幕快照」，
+你必须按 **ReAct 三段（Observation → Reflection → Action）** 严格输出 JSON。
 
-目标：
-$userGoal
-${if (blacklistSection.isEmpty()) "" else "\n$blacklistSection\n"}
+═══════════════════════════════════════
+■ 必填 JSON schema（顺序就是你的思考顺序，先想 observation 再想 action）
+═══════════════════════════════════════
+{
+  "observation": "<必填，3-5 句>看完当前 snapshot 后我看到什么？activityName 是什么？关键节点（输入框/按钮/列表）有哪些？上一步 action 之后 UI 有没有产生可见变化（节点列表/text/页面切换）？",
+  "last_action_review": "<必填，1-2 句>对照上一步 action 实际结果与你当时的预期：真做到我以为的事了吗？history 里追加的 ⚠ 提示我看到了吗？如果没生效，原因是什么？",
+  "reflection": "<必填，2-4 句>基于上面 observation + review，下一步的方向是什么？为什么这个方向比其他备选好？",
+  "action": {
+    "type": "launch_app|click|long_click|set_text|wait|scroll|global_back|global_home|done|give_up",
+    ... (按下方动作字段约定填)
+  },
+  "plan_status": "on_track|adjusted|off_track|unknown"
+}
+
+只输出一个 JSON 对象，不要 markdown / 不要数组 / 不要解释。
+
+═══════════════════════════════════════
+■ 用户目标 / 当前会话状态
+═══════════════════════════════════════
+目标：$userGoal
+${if (stuckSection.isEmpty()) "" else "\n$stuckSection\n"}${if (blacklistSection.isEmpty()) "" else "\n$blacklistSection\n"}${if (failedSection.isEmpty()) "" else "\n$failedSection\n"}
 $planSection
 
 $historySection
 
 $snapshotSection
 
-可用动作（type 字段必须是这些之一，多余字段会被忽略）：
-${OPEN_ACTIONS.joinToString(", ")}
+═══════════════════════════════════════
+■ 动作字段约定
+═══════════════════════════════════════
+- launch_app: { "type":"launch_app", "packageName":"<pkg>" }
+- click / long_click: { "type":"click", "target": <AiUiTarget> }
+   · target 优先用**有 text 或 contentDesc 的语义节点**——hint=「搜索」按钮 / desc=「发送」 这种；不要执着于必须 [C]，executor 会自动找 parent / 走坐标触摸。
+- set_text: { "type":"set_text", "target": <AiUiTarget>, "text":"<内容>" }
+   · target **必须** 是带 [E] 的节点；执行端会硬验证，不是 [E] 直接拒收。
+- scroll: { "type":"scroll", "target": <AiUiTarget 可空>, "text":"down|up|left|right" }
+- wait: { "type":"wait", "seconds": <1-30> }
+- global_back / global_home: { "type":"global_back" }
+- done: { "type":"done", "summary":"<向用户说明已经达成什么>" }
+- give_up: { "type":"give_up", "reason":"<为什么放弃>" }
 
-各动作字段约定（每个动作都**必须**带上 plan_status，详见后面"自检"部分）：
-- launch_app: { "type":"launch_app", "packageName":"<pkg>", "thought":"...", "plan_status":"on_track|adjusted|off_track|unknown" }
-- click / long_click: { "type":"click", "target": <AiUiTarget>, "thought":"...", "plan_status":"..." }
-   · **target 不要求 [C]**——执行器会自动选最合适的方式触发：节点带 [C] 走标准 a11y 点击，节点 [-] 但 parent 是 [C] 走 parent 容器，纯 [-] 节点走坐标触摸（点 bounds 中心）。三种方式可靠性都很高。
-   · 选 target 时**优先**选**有 text 或 contentDesc 的节点**（人也能看懂的入口）——这远比"必须 [C]"重要。例如 desc="发送" 的 [-] View 比同区域无 text 的 [C] View 更可能是真发送按钮。
-- set_text: { "type":"set_text", "target": <AiUiTarget>, "text":"<要写入的文本>", "thought":"...", "plan_status":"..." }
-   · **target 必须命中带 [E] 的节点**（editable=true，即真正的输入框）。
-   · 当前屏幕**没有任何 [E] 节点 = 此页没有输入框**——必须先 click 进入正确页面，禁止直接 set_text。
-- scroll: { "type":"scroll", "target": <AiUiTarget 可空>, "text":"down|up|left|right", "thought":"...", "plan_status":"..." }
-- wait: { "type":"wait", "seconds": <1-30>, "thought":"...", "plan_status":"..." }
-- global_back / global_home: { "type":"global_back", "thought":"...", "plan_status":"..." }
-- done: { "type":"done", "summary":"<向用户说明已经达成什么>", "thought":"...", "plan_status":"..." }
-- give_up: { "type":"give_up", "reason":"<为什么放弃>", "thought":"...", "plan_status":"..." }
-
-AiUiTarget 是定位条件，至少要给一个非空字段：
+AiUiTarget 至少给一个非空字段：
 {
-  "viewId": "<resource id 全名，如 com.tencent.mm:id/send_btn>",
-  "textEquals": "<完整匹配的可见文本>",
-  "textContains": "<可见文本中出现的子串>",
-  "contentDescEquals": "<contentDescription 完整匹配>",
+  "viewId": "<resource id>",
+  "textEquals": "<完整匹配可见文本>",
+  "textContains": "<文本子串>",
+  "contentDescEquals": "<完整 contentDescription>",
   "contentDescContains": "<contentDescription 子串>",
-  "className": "<节点类名末段，例如 Button、EditText>",
-  "matchIndex": <同时多个匹配时取第几个，默认 0>
+  "className": "<类名末段如 Button/EditText，慎用——AI 经常猜错真实 className 反而匹不中>",
+  "matchIndex": <多匹配时取第几个，默认 0>
 }
 
-行为准则：
-0. **【最高优先级】绝不操作 AutoTask 自己**：当 "当前屏幕" 显示 packageName = `top.xjunz.tasker` 时（这就是你正在跑的 AutoTask App 自己），**绝对不要**输出 click / set_text / long_click / scroll 任何会触动它界面的动作；那只会让你和你正在执行的指令本身打架。此时只能：(a) 输出 launch_app(目标 App 包名) 切到目标 App；(b) 如果用户目标本来就要在 AutoTask 里完成，直接 give_up 让用户手动操作。
-1. 如果目标已经达成，立刻输出 done。
-2. 如果当前界面与目标无关（例如还在桌面而 App 没启动），先 launch_app；不要在桌面上找 App 图标点击。
-3. **绝对不要在已经进入目标 App 后再次 launch_app 同一 pkg**：如果"当前屏幕"显示的 packageName 已经等于你想 launch 的目标，直接基于现有节点决定下一步（点击 / 输入 / 滚动 / wait / done）；硬要再次 launch 会被系统短路并视为偏轨。
-4. 启动后界面没切过来（current pkg 仍是桌面 / launcher），优先用 wait(2-3s) 多看一两轮再判断；不要立刻又发 launch_app。
-5. **target 锁定原则**：能用 textEquals / contentDescEquals 唯一锁定的就用它（人话语义最准）；textEquals 锁不住时再加 className（"按钮 + 文本 X"）；viewId 在大型 RN/Compose App 里经常多节点共享同 id（如 `com.deepseek.chat:id/edit_text` 可能挂多处），单用容易匹错——**有 viewId 时建议同时给 textEquals/textContains 联合锁定**。
-6. 不要操作快照里没有列出的节点；如果你想要的入口不在快照里，先 scroll 或 wait 再看。
-7. **silent-fail 后的重试规则（重要）**：上一步 click/set_text 后**屏幕节点签名没变化**，系统会在该步 message 里追加 ⚠。**第一次** silent fail 允许你**再试一次**同一 target（给动画延迟一次机会，比如启动期 click 经常被吞），系统会等待并重新抓快照。**第二次**仍然 silent fail 该 target 就被永久拉黑（顶部"禁选目标"会列出来），此时**必须**换别的 target / scroll / wait / give_up。绝对禁止重复输出已经在禁选区的 target。
-8. **节点 flag 是参考不是硬约束**（仅 set_text 例外，必须 [E]）：每个节点旁的 `[CLEFS]` 含义——C=可点击 / L=可长按 / **E=可编辑（输入框）** / F=可获取焦点 / S=可滚动 / k 已勾选 K 可勾选未选中 / D 已禁用。click 不要求 [C]：很多 App（特别是 React Native / Compose 自绘）把 clickable 标在父容器上，子节点显示 [-]，但子节点有 text/desc 用户语义清晰——这种情况**优先选有 text/desc 的子节点**，executor 会自动用坐标触摸或回溯到 parent。
-9. 单次只做一步。每一步都要简短填 thought 解释为什么这样选。
-10. 如果遇到登录 / 支付 / 安全验证 / 输入密码 等敏感界面，立刻 give_up，让用户接管。
-11. 你最多有 $maxSteps 步预算（系统会强制中止），珍惜每一步。
+═══════════════════════════════════════
+■ 行为准则（精简版，主要靠 ReAct schema 自我引导，不再堆砌规则）
+═══════════════════════════════════════
+1. **绝不操作 AutoTask 自己**：snapshot.packageName=`top.xjunz.tasker` 时只能 launch_app(目标 pkg) 或 give_up，禁止 click/set_text。
+2. **目标已达成立刻输出 done**——尤其是当 reflection 已经看到结果时，不要硬找下一步硬撑预算。
+3. **节点 flag**：[CLEFS] = C 可点 / L 可长按 / **E 可编辑** / F 可聚焦 / S 可滚动 / k 已勾选 K 未勾选 / D 禁用。
+4. **target 锁定**：能用 text/desc 唯一锁定就用它；className 字段经常猜错（真节点是 LinearLayout 但你猜成 TextView），失败 1 次就别再带 className。
+5. **不要操作快照里没列出的节点**——想点的入口不在就先 scroll 或 wait。
+6. **global_home 之后必须 launch_app**：global_home 回桌面后 snapshot.packageName 会变成 launcher（com.bbk.launcher2 / com.miui.home 等），这时**必须** 立刻 launch_app(目标包名) 重新进入目标 App，不要在桌面找 App 图标 click。
+7. **登录/支付/验证码** 等敏感界面立刻 give_up 让用户接管。
+8. 步数预算 $maxSteps，珍惜每一步。
 
-【自检：plan_status 必填】
-每一步都要根据"原会话规划"和"过去步骤实际走向"自评本步在轨度，必须是以下四个之一：
-- on_track: 本步与原 plan 一致，按预期推进。
-- adjusted: 本步在原 plan 大方向内做了局部调整（例如换了入口、换了 target 字段），但目标方向不变。
-- off_track: 本步偏离了原 plan，正在尝试纠正回去（例如发现自己进了广告页，先 global_back）。
-- unknown: 没有原 plan 可对照，或情况复杂无法判断。
 
-如果连续两步都是 off_track 且没有看到回到正轨的迹象，强烈建议直接 give_up 让用户接管，而不要硬撑。
-
-只输出一个动作的 JSON 对象，不要数组、不要其他字段。
+plan_status 含义：on_track（按规划） / adjusted（小调整） / off_track（偏离正在纠正） / unknown。
+连续两步 off_track 没回正就直接 give_up。
         """.trimIndent()
     }
 
@@ -318,8 +391,17 @@ AiUiTarget 是定位条件，至少要给一个非空字段：
                 val msg = rec.result.message?.let { " | $it" } ?: ""
                 val ps = rec.action.planStatus?.takeIf { it.isNotBlank() }?.let { " [plan=$it]" } ?: ""
                 val intervention = formatIntervention(rec.userIntervention)
-                val thought = rec.action.thought?.takeIf { it.isNotBlank() }?.let { " // $it" } ?: ""
-                appendLine("- #${rec.index}$pkg ${describeAction(rec.action)}$ps$intervention → $ok$matched$msg$thought")
+                appendLine("- #${rec.index}$pkg ${describeAction(rec.action)}$ps$intervention → $ok$matched$msg")
+                // ReAct 三段写在子行——让 AI 看见自己 N 步前的思维链路（链式 self-consistency）
+                rec.observation?.takeIf { it.isNotBlank() }?.let {
+                    appendLine("    obs: ${it.take(120)}")
+                }
+                rec.lastActionReview?.takeIf { it.isNotBlank() }?.let {
+                    appendLine("    review: ${it.take(120)}")
+                }
+                rec.reflection?.takeIf { it.isNotBlank() }?.let {
+                    appendLine("    reflection: ${it.take(120)}")
+                }
             }
             // 用户介入累计统计（让 AI 感知"我前几步被用户改了几次方向"）
             val interventions = history.mapNotNull { it.userIntervention }
@@ -503,9 +585,20 @@ data class AiAgentSessionPlanResult(
     val providerError: String? = null
 )
 
+/**
+ * Structured ReAct 响应（aidoc/18 §3.A）。
+ *
+ * - [action] 永远是真要执行的强类型动作。
+ * - [observation] / [lastActionReview] / [reflection] 是 AI 在生成 action 前**强制**写下的
+ *   ReAct 三段思考，session 会把它们 append 到 step record 给后续 history 用。
+ *   AI 没遵守新格式（直接给老 ActionDto）时会是 null，session 仍能跑（兼容退化）。
+ */
 data class AiAgentNextActionResult(
     val action: AiAgentAction,
     val prompt: String,
     val rawResponse: String?,
-    val providerError: String? = null
+    val providerError: String? = null,
+    val observation: String? = null,
+    val lastActionReview: String? = null,
+    val reflection: String? = null
 )

@@ -70,10 +70,7 @@ object AiAgentExecutor {
 
             is AiAgentAction.LaunchApp -> launchApp(action.packageName)
 
-            is AiAgentAction.Scroll -> AiAgentStepResult(
-                ok = false,
-                message = "scroll 暂未通过 task 管道实现，请用 click 或 wait 替代"
-            )
+            is AiAgentAction.Scroll -> dispatchScroll(action)
 
             // **新链路（aidoc/17）**：click / longClick 走 RPC `executeAgentActionByTarget`，
             // 让执行端进程拿真节点 + NodeCriteriaExtractor 抽完整 criteria，跟 inspector「自动点击」字段级一致。
@@ -86,6 +83,19 @@ object AiAgentExecutor {
                 actionLabel = "long_click"
             )
             is AiAgentAction.SetText -> setTextWithFallback(action)
+
+            // **GlobalBack/Home 走标准 inspector 链路**（5/11 18:21 撤销之前的 shell hack）：
+            // 之前误以为是 OEM 限制了 a11y connection 的 GLOBAL_ACTION_BACK/HOME，
+            // 改用 shell input keyevent + 二级 snapshot 验证。**完全错的诊断**。
+            //
+            // 真因（重新审 task 引擎源码）：AiActionToTask.translate 的 task 树**少了空 ifFlow**，
+            // 导致 doFlow 永远被 shouldBeSkipped()，pressBack/pressHome **从来没真跑过**——
+            // 这才是用户测试 task 报 OK 但屏幕没变的真因，跟 OEM 无关。
+            // 修法在 AiActionToTask.kt：加空 ifFlow 让 ifSuccessful=true，doFlow 才能跑。
+            //
+            // 修好后 dispatchViaTask → AiActionToTask → pressBack/pressHome → uiAutomation.performGlobalAction()
+            // 跟 inspector 用户保存的 GlobalAction task 走完全同款路径，标准方案。
+            // 不再需要 shell hack。
 
             is AiAgentAction.Done,
             is AiAgentAction.GiveUp,
@@ -100,6 +110,28 @@ object AiAgentExecutor {
                     (result.message?.let { " | $it" } ?: "")
         )
         return result
+    }
+
+    /**
+     * scroll 派发：复用 inspector 同款 [UiObjectActionRegistry.swipe] 路径（详见 aidoc/18 §3.E）。
+     *
+     * direction 编码：把 AI 给的 "down/up/left/right" 跟 percent=0.5、speed=1000（合理默认）
+     * 拼成 "down:0.5:1000" 通过 extraText 传给 service 端，service 用 SwipeMetrics.compose 还原成 Long。
+     *
+     * target 为空时：传一个仅含 className=ScrollView/RecyclerView 的"任意可滚动节点"target 给 service，
+     * service 端 BFS 命中第一个匹配的就行——这跟 inspector 用户挑 scrollable 节点的语义等价。
+     */
+    private suspend fun dispatchScroll(action: AiAgentAction.Scroll): AiAgentStepResult {
+        val target = action.target ?: AiUiTarget(
+            // 没指定 target 时用最常见的 scrollable 容器类名做兜底；service 端 findRealNode BFS 会拿第一个。
+            // 优先 ScrollView（最通用），未来 deepseek/RN 这种自绘列表可在这里加更多 fallback class 名。
+            className = "ScrollView"
+        )
+        val extra = "${action.direction.lowercase()}:0.5:1000"
+        return dispatchAgentActionByTarget(
+            AiAgentTaskAssembler.ACTION_SWIPE, target, extra,
+            actionLabel = "scroll(${action.direction})"
+        )
     }
 
     /**
@@ -155,11 +187,23 @@ object AiAgentExecutor {
                 ok = false,
                 message = "等待执行完成超时（${SCHEDULE_TIMEOUT_MILLIS}ms），可能远端卡死，请下一步 wait 或 give_up"
             )
-            true -> AiAgentStepResult(ok = true, message = "${actionLabel} 命中节点并执行完成")
-            false -> AiAgentStepResult(
-                ok = false,
-                message = "${actionLabel} 未在当前屏幕找到匹中 target 的节点（target 字段太宽 / 此页面没有该控件 / 节点拒绝 perform）"
-            )
+            true -> {
+                // 拉服务端的精细诊断（成功也拉，"ok: 命中节点 X"，让 AI 在反思时知道实际命中啥）
+                val diag = runCatching { currentService.getLastAgentDiagnostic() }.getOrDefault("")
+                AiAgentStepResult(
+                    ok = true,
+                    message = if (diag.isNotBlank()) diag else "${actionLabel} 命中节点并执行完成"
+                )
+            }
+            false -> {
+                // **E.2 + D 关键反馈**：失败时拉精细诊断（哪些字段不符 / 节点不可编辑 / RN 不响应 等）
+                val diag = runCatching { currentService.getLastAgentDiagnostic() }.getOrDefault("")
+                AiAgentStepResult(
+                    ok = false,
+                    message = if (diag.isNotBlank()) "${actionLabel} 失败：$diag"
+                    else "${actionLabel} 未在当前屏幕找到匹中 target 的节点（无诊断信息可用）"
+                )
+            }
         }
     }
 
@@ -288,7 +332,10 @@ object AiAgentExecutor {
      * 通过 task 管道在特权进程跑一条 shell 命令。复用 [ShellCmdActionRegistry.executeShellCmd]——
      * 这个 applet 已经标 `.shizukuOnly()`，意味着 a11y 模式调用会失败，调用方需要做兜底文案。
      *
-     * 用 [AiActionToTask] 的同款 RootFlow + Do(REL_ANYWAY) 模板，避免重写一次踩同样的 relation gate 坑。
+     * **5/11 18:30 修真 bug**：之前 task 树是 `RootFlow + preloadFlow + Do(REL_ANYWAY)`，
+     * 但 `Do.shouldBeSkipped(runtime.ifSuccessful != true)` —— 没 If 跑过 ifSuccessful=null →
+     * doFlow 永远被 skip → shellCmd **从来没真跑过**。setText paste fallback 一直假成功。
+     * 修法：跟 inspector default flow 一致加空 ifFlow，让 ifSuccessful=true，doFlow 才能跑。
      */
     private suspend fun dispatchShellViaTask(cmd: String): AiAgentStepResult {
         if (!serviceController.isServiceRunning) {
@@ -299,8 +346,9 @@ object AiAgentExecutor {
             factory.preloadIfNeeded()
             val root = factory.flowRegistry.rootFlow.yield() as RootFlow
             root.add(factory.flowRegistry.preloadFlow.yield())
+            // **关键**：加空 ifFlow，让 ifSuccessful=true（详见 Do.shouldBeSkipped 真因）
+            root.add(factory.flowRegistry.ifFlow.yield())
             val doFlow = factory.flowRegistry.doFlow.yield() as Do
-            doFlow.relation = Applet.REL_ANYWAY
             root.add(doFlow)
             val shellRegistry = factory.requireRegistryById(BootstrapOptionRegistry.ID_SHELL_CMD_ACTION_REGISTRY)
                     as ShellCmdActionRegistry

@@ -28,6 +28,13 @@ import top.xjunz.tasker.task.inspector.shared.UiTreeQuery
  */
 private const val OUT_OF_SCOPE_TOLERATE_HITS = 3
 
+/**
+ * **B Stuck Detection 阈值**（aidoc/18 §3.B）。连续这么多步无进展就触发 forced replan，
+ * 在 prompt 里加 STUCK 警示要求 AI 给完全不同方向；超过 [STUCK_HARD_LIMIT] 直接 give_up。
+ */
+private const val STUCK_FORCED_REPLAN_AT = 3
+private const val STUCK_HARD_LIMIT = 6
+
 class AiAgentSession(
     val scope: AiTaskScope,
     /**
@@ -72,6 +79,49 @@ class AiAgentSession(
      * 提示对 AI 引导力不够，必须用最显眼的"禁选区"配合 session 兜底拒收。
      */
     private val deadTargetsByPkg = mutableMapOf<String, MutableSet<String>>()
+
+    /**
+     * **C 长期失败策略记忆**（aidoc/18 §3.C）。
+     *
+     * 把"我已经尝试过 X 种策略 + 都失败了"显式注入下一轮 prompt，让 AI **不必从 history 自己 inference**
+     * 哪条路堵了——直接看顶部的"已尝试失败的策略"列表，跟禁选区是不同维度：
+     * - 禁选区（[deadTargetsByPkg]）：精确 target hash 拉黑，AI 复用必拒收
+     * - 失败策略（本 map）：更广义的"策略指纹"（pkg + activity + actionType + 关键 target 字段），
+     *   AI 看完会主动避开同方向尝试，不只是同一 target
+     *
+     * key = `{pkg}|{activity}|{actionType}|{targetSemanticHash}`，value = 失败次数 + 最近一次诊断 message。
+     */
+    private val failedStrategies = mutableMapOf<String, FailedStrategy>()
+
+    data class FailedStrategy(
+        val key: String,
+        val description: String,
+        var attemptCount: Int = 1,
+        var lastDiagnostic: String? = null
+    )
+
+    /**
+     * **B Stuck Detection** 计数器（aidoc/18 §3.B）。
+     * 累加规则见 [bumpStuckOnFailure] / [resetStuckOnProgress]，
+     * ≥ [STUCK_FORCED_REPLAN_AT] 触发 prompt 注入 STUCK 警示要求 AI 重新思考；
+     * ≥ [STUCK_HARD_LIMIT] 直接终止 session。
+     */
+    private var consecutiveUnproductiveSteps = 0
+
+    private fun bumpStuckOnFailure(reason: String) {
+        consecutiveUnproductiveSteps++
+        AiAgentLog.w(
+            "session.stuck",
+            "无进展计数 +1 = $consecutiveUnproductiveSteps（原因：$reason）；阈值 $STUCK_FORCED_REPLAN_AT/$STUCK_HARD_LIMIT"
+        )
+    }
+
+    private fun resetStuckOnProgress() {
+        if (consecutiveUnproductiveSteps > 0) {
+            AiAgentLog.i("session.stuck", "已取得进展，无进展计数清零（原 $consecutiveUnproductiveSteps）")
+        }
+        consecutiveUnproductiveSteps = 0
+    }
 
     /**
      * 同一 (pkg, target) 命中 silent-fail 的次数。**累计 ≥ 2 才永久拉黑**，给"动画延迟期 click 不响应"
@@ -191,7 +241,42 @@ class AiAgentSession(
                     } else {
                         AiAgentLog.w("session.silentFailFirstChance", "pkg=$pkgKey target=$targetHash 第一次 silent fail，给一次重试机会")
                     }
+                    // **C 长期失败策略记忆**：silent-fail 也算失败策略
+                    recordFailedStrategy(patched, snapshot?.activityName)
+                    // **B Stuck Detection**：silent-fail 算无进展
+                    bumpStuckOnFailure("silent-fail target=$targetHash")
+                } else {
+                    // 上一步 ok=true 且屏幕真变了 → 取得进展
+                    // 注意：这里不能要求 actionMayChangeUi——wait 等动作虽然 may not change UI 但不算无进展，
+                    // 它们的 stuck 计数已经在 execute 阶段（line ~533）的 ok 判定里处理过了。
+                    // 这里专门处理"UI-affecting + ok + 签名真变"的进展场景。
+                    if (last.result.ok && actionMayChangeUi(last.action)) {
+                        resetStuckOnProgress()
+                    }
                 }
+            } else if (history.isEmpty()) {
+                // 第一步前没有 history，stuck 计数本就是 0；显式提示日志便于排查。
+                resetStuckOnProgress()
+            }
+
+            // **B Stuck Detection 硬终止（统一位置）**：任何失败路径累加 stuck 后下一轮都会先到这。
+            // 之前只在 deadTarget 拒收后查，silent-fail 累积超过硬限不会终止 session。
+            if (consecutiveUnproductiveSteps >= STUCK_HARD_LIMIT) {
+                AiAgentLog.w(
+                    "session.stuckHardLimit",
+                    "无进展计数 $consecutiveUnproductiveSteps ≥ 硬限 $STUCK_HARD_LIMIT，强制终止 session"
+                )
+                val outcome = AiAgentSessionOutcome.GivenUp(
+                    reason = "stuck 硬限触发：连续 $consecutiveUnproductiveSteps 步无进展，AI 反思后仍无突破",
+                    history = history.toList(),
+                    lastRecord = history.lastOrNull() ?: AiAgentStepRecord(
+                        index = stepIndex,
+                        action = AiAgentAction.GiveUp("stuck-hard-limit"),
+                        result = AiAgentStepResult(false, "stuck 硬限")
+                    )
+                )
+                callbacks.onComplete(outcome)
+                return outcome
             }
 
             // ---- App scope 检查 ----
@@ -234,13 +319,22 @@ class AiAgentSession(
                 stepIndex, scope.maxSteps
             )
             val deadList = pkg?.let { deadTargetsByPkg[it]?.toList() }.orEmpty()
+            // **C 长期记忆**：把所有失败策略整理成 prompt 可读的列表
+            val failedList = failedStrategies.values
+                .sortedByDescending { it.attemptCount }
+                .map {
+                    "${it.description}（失败 ${it.attemptCount} 次${it.lastDiagnostic?.let { d -> "；最后一次：${d.take(80)}" }.orEmpty()}）"
+                }
             val nextResult = AiAgentPlanner.nextAction(
                 userGoal = scope.userGoal,
                 history = history,
                 snapshot = snapshot,
                 plan = plan,
                 maxSteps = scope.maxSteps,
-                deadTargets = deadList
+                deadTargets = deadList,
+                failedStrategies = failedList,
+                stuckHits = consecutiveUnproductiveSteps,
+                stuckThreshold = STUCK_FORCED_REPLAN_AT
             )
 
             val action = nextResult.action
@@ -265,8 +359,11 @@ class AiAgentSession(
                 history += record
                 callbacks.onStep(record)
                 stepIndex++
+                // **B Stuck Detection**：deadTarget 拒收也算无进展
+                bumpStuckOnFailure("deadTarget rejected: $targetHash")
                 delay(150)
                 continue
+                // 硬限检查已移到 loop 起始的统一位置，下一轮 continue 后会触发
             }
 
             // ---- 终止条件 ----
@@ -400,11 +497,13 @@ class AiAgentSession(
             }
 
             // ---- 执行 ----
-            // 状态文案给具体动作 + AI 的 thought（让用户随时知道 AI 在干嘛、为什么这么做）
-            val thoughtTail = executedAction.thought?.takeIf { it.isNotBlank() }
-                ?.let { "（${it.take(40)}）" }.orEmpty()
+            // 状态文案优先用 reflection（ReAct 阶段产出，最反映 AI 真实意图）；
+            // 退化到 thought（老格式 fallback）；都没有就只显示动作。
+            val intentTail = (nextResult.reflection ?: executedAction.thought)
+                ?.takeIf { it.isNotBlank() }
+                ?.let { "（${it.take(60)}）" }.orEmpty()
             overlay?.showStatus(
-                "正在执行：${describeActionShort(executedAction)}$thoughtTail",
+                "正在执行：${describeActionShort(executedAction)}$intentTail",
                 stepIndex, scope.maxSteps
             )
             val result = AiAgentExecutor.execute(executedAction)
@@ -423,10 +522,19 @@ class AiAgentSession(
                 userIntervention = decision.takeIf { it !is AiAgentDecision.Skipped },
                 // 把执行**之前**的屏幕签名记下来，下一轮抓到新 snapshot 时跟它比对——
                 // 签名一致就给 result.message 追加 silent-fail 警告，AI 在下一轮 prompt 看见就会换策略。
-                preActionSignature = currentSig
+                preActionSignature = currentSig,
+                // ReAct 三段保留进 record，下一轮 history section 喂回 AI 看自己的思维链
+                observation = nextResult.observation,
+                lastActionReview = nextResult.lastActionReview,
+                reflection = nextResult.reflection
             )
             history += record
             callbacks.onStep(record)
+            // **C 失败策略记忆 + B Stuck Detection**：ok=false 累加；ok=true 待下一轮 silent-fail 检查决定
+            if (!result.ok) {
+                recordFailedStrategy(record, snapshot?.activityName)
+                bumpStuckOnFailure("execute ok=false: ${describeActionShort(executedAction).take(50)}")
+            }
             stepIndex++
             // replacementHint 仅记录在 history.intervention 标签里给 AI 看，本地不需要再额外做事
             @Suppress("UNUSED_VARIABLE")
@@ -490,6 +598,59 @@ class AiAgentSession(
         t.contentDescEquals?.let { parts.add("desc=$it") }
         t.className?.let { parts.add("cls=$it") }
         return parts.joinToString(",").take(80).ifEmpty { "(?)" }
+    }
+
+    /**
+     * **C 失败策略指纹**（aidoc/18 §3.C）：比 target hash 更广义的策略 key，让 AI 看到
+     * "这个方向已经失败 N 次"——不止是同一 target，也包括"换 className 但其他字段不变" 的同方向尝试。
+     *
+     * key 包含 pkg + activity + actionType + 关键 target 字段。
+     */
+    private fun strategyKey(action: AiAgentAction, pkg: String?, activity: String?): String {
+        val typeName = action::class.simpleName ?: "?"
+        val targetPart = when (action) {
+            is AiAgentAction.Click -> "click:${formatTargetForLog(action.target)}"
+            is AiAgentAction.LongClick -> "long_click:${formatTargetForLog(action.target)}"
+            is AiAgentAction.SetText -> "set_text:${formatTargetForLog(action.target)}|${action.text.take(20)}"
+            is AiAgentAction.Scroll -> "scroll:${action.direction}:${action.target?.let { formatTargetForLog(it) } ?: "default"}"
+            is AiAgentAction.LaunchApp -> "launch:${action.packageName}"
+            else -> typeName
+        }
+        return "${pkg ?: "?"}|${activity ?: "?"}|$targetPart"
+    }
+
+    private fun strategyDescription(action: AiAgentAction, pkg: String?, activity: String?): String {
+        val activityShort = activity?.substringAfterLast('.') ?: "?"
+        val pkgShort = pkg?.substringAfterLast('.') ?: "?"
+        return when (action) {
+            is AiAgentAction.Click -> "click ${formatTargetForLog(action.target)} @ $pkgShort/$activityShort"
+            is AiAgentAction.LongClick -> "long_click ${formatTargetForLog(action.target)} @ $pkgShort/$activityShort"
+            is AiAgentAction.SetText -> "set_text \"${action.text.take(20)}\" → ${formatTargetForLog(action.target)} @ $pkgShort/$activityShort"
+            is AiAgentAction.Scroll -> "scroll ${action.direction} @ $pkgShort/$activityShort"
+            is AiAgentAction.LaunchApp -> "launch_app(${action.packageName})"
+            else -> "${action::class.simpleName} @ $pkgShort/$activityShort"
+        }
+    }
+
+    /**
+     * 把一个失败的 step 记到 [failedStrategies]——后续 prompt 会显式列出，让 AI 不重复尝试。
+     */
+    private fun recordFailedStrategy(record: AiAgentStepRecord, activity: String?) {
+        if (!actionMayChangeUi(record.action)) return  // wait/done/giveup 不算策略失败
+        val key = strategyKey(record.action, record.snapshotPackage, activity)
+        val existing = failedStrategies[key]
+        if (existing != null) {
+            existing.attemptCount++
+            existing.lastDiagnostic = record.result.message?.take(120)
+        } else {
+            failedStrategies[key] = FailedStrategy(
+                key = key,
+                description = strategyDescription(record.action, record.snapshotPackage, activity),
+                attemptCount = 1,
+                lastDiagnostic = record.result.message?.take(120)
+            )
+        }
+        AiAgentLog.d("session.failedStrategies", "记录失败策略：$key (累计 ${failedStrategies[key]!!.attemptCount} 次)")
     }
 
     /**

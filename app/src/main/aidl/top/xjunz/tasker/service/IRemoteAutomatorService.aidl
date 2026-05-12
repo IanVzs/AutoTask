@@ -70,6 +70,16 @@ interface IRemoteAutomatorService {
      */
     void executeAgentActionByTarget(int actionType, String targetJson, String extraText, in ITaskCompletionCallback callback) = 18;
 
+    /**
+     * 拉一段执行端进程**最近一次** [executeAgentActionByTarget] 的诊断信息（aidoc/18 §3.E.2 + §3.D）。
+     *
+     * - main 端在 callback isSuccessful=false 后调本方法，拿到精细原因（哪些字段不符 / 节点不可编辑等），
+     *   写进 step.result.message 喂给 AI 反思。
+     * - 失败 / 服务未启动 / 没有诊断时返回 ""，调用方按 isNullOrBlank 兼容。
+     * - 单实例 agent session 串行跑，不存在并发覆盖问题；多 agent 场景需要扩成 keyed map（暂不需要）。
+     */
+    String getLastAgentDiagnostic() = 19;
+
     oneway void destroy() = 16777114; // Destroy method defined by Shizuku server
 
 }

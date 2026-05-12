@@ -28,31 +28,49 @@ object NodeCriteriaExtractor {
 
     /**
      * @param criteria 全部生成的 Criterion Applet 列表。
-     * @param defaultUncheckedIndices 默认**不**勾选的下标集合。当前 4 项："反转"语义的
+     * @param defaultUncheckedIndices 默认**不**勾选的下标集合。当前 3 项："反转"语义的
      *   isSelected / isScrollable / childCount。Inspector UI 据此初始化复选状态。
+     * @param semanticIndices "语义字段" 下标集合（aidoc/19 §F1 修法）——
+     *   `isType / withId / textEquals / contentDesc` 这种**跟节点身份直接相关**的字段。
+     *   AI agent 临时 task 用 [semanticIndices] 替代 [defaultUncheckedIndices] 的 filter，
+     *   只用语义字段做 containsUiObject 二次定位，**剥掉所有状态字段**（isClickable/
+     *   isLongClickable/isCheckable/isChecked/isEditable/isEnabled），避免：
+     *   - P1：状态字段太严，inspector 用户挑节点时经常手动取消，AI agent 没法手动取消
+     *   - P2：isChecked 陷阱（节点 isCheckable=true 但 isChecked=false 时仍加 isChecked=true 条件，
+     *     永远匹不中——inspector 用户必须手动取消勾选才能命中）
+     *   inspector 用户挑节点路径**不用** semanticIndices——保持原行为（用户可以勾选状态字段）。
      */
     data class Result(
         val criteria: List<Applet>,
-        val defaultUncheckedIndices: Set<Int>
+        val defaultUncheckedIndices: Set<Int>,
+        val semanticIndices: Set<Int>
     )
 
     fun extract(node: AccessibilityNodeInfo): Result {
         val registry = AppletOptionFactory.uiObjectRegistry
         val criteria = mutableListOf<Applet>()
         val uncheckedIndices = mutableSetOf<Int>()
+        val semanticIndices = mutableSetOf<Int>()
 
+        // ---------- 语义字段：跟节点身份直接相关，AI agent 只用这些 ----------
         if (node.className != null) {
             criteria.add(registry.isType.yieldWithFirstValue(node.className))
+            semanticIndices.add(criteria.lastIndex)
         }
         if (node.viewIdResourceName != null) {
             criteria.add(registry.withId.yieldWithFirstValue(node.viewIdResourceName))
+            semanticIndices.add(criteria.lastIndex)
         }
         if (node.text != null) {
             criteria.add(registry.textEquals.yieldWithFirstValue(node.text))
+            semanticIndices.add(criteria.lastIndex)
         }
         if (node.contentDescription != null) {
             criteria.add(registry.contentDesc.yieldWithFirstValue(node.contentDescription))
+            semanticIndices.add(criteria.lastIndex)
         }
+
+        // ---------- 状态字段：节点当前状态。AI agent 跳过这些，inspector 用户可勾选 ----------
         if (node.isClickable) {
             criteria.add(registry.isClickable.yield())
         }
@@ -93,6 +111,10 @@ object NodeCriteriaExtractor {
         // childCount 这条默认不勾——大多数任务不需要严格 child 数，只是给用户一个开关
         uncheckedIndices.add(criteria.lastIndex)
 
-        return Result(criteria = criteria, defaultUncheckedIndices = uncheckedIndices)
+        return Result(
+            criteria = criteria,
+            defaultUncheckedIndices = uncheckedIndices,
+            semanticIndices = semanticIndices
+        )
     }
 }
