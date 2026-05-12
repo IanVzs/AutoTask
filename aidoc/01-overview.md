@@ -7,7 +7,7 @@
 - **类型**：开源 **Android 任务自动化 / 无代码自动点击** 工具
 - **协议**：Apache-2.0
 - **上游仓库**：[xjunz/AutoTask](https://github.com/xjunz/AutoTask)（当前 git remote `origin = git@github.com:IanVzs/AutoTask.git` 为派生仓库）
-- **当前版本**：`2.0.0` / versionCode `200`（见根目录 `gradle.properties`）
+- **当前版本**：`2.1.0-alpha.1` / versionCode `210`（见根目录 `gradle.properties`）
 - **最低 / 目标 SDK**：`minSdk 24` / `targetSdk 36` / `compileSdk 36.1`
 - **签名配置**：可选；需要自定义签名时在未提交的 `local.properties` 提供 `storeFile`/`storePassword`/`keyAlias`/`keyPassword`
 

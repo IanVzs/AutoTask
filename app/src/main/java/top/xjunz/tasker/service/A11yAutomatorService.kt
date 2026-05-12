@@ -209,6 +209,30 @@ class A11yAutomatorService : AccessibilityService(), AutomatorService, IUiAutoma
         residentTaskScheduler.isSuppressed = suppress
     }
 
+    /**
+     * 直接走自身（A11y service 跑在主进程）的 `rootInActiveWindow` + freeze + 压缩。
+     * 失败（root 为 null / 异常）返回空字符串，调用方据此判定 "暂时抓不到，下一轮重试"。
+     */
+    override fun captureUiSnapshotJson(maxNodes: Int, maxTextLen: Int): String {
+        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return ""
+        val frozen = runCatching {
+            top.xjunz.tasker.task.inspector.StableNodeInfo.Companion.run { root.freeze() }
+        }.getOrNull() ?: return ""
+        val display = resources.displayMetrics
+        val compInfo = runCatching { a11yEventDispatcher.getCurrentComponentInfo() }.getOrNull()
+        return runCatching {
+            top.xjunz.tasker.task.inspector.shared.AiNodeTreeCompactor.compactToJson(
+                rootNode = frozen,
+                screenWidth = display.widthPixels,
+                screenHeight = display.heightPixels,
+                packageName = compInfo?.packageName,
+                activityName = compInfo?.activityName,
+                maxNodes = maxNodes,
+                maxTextLen = maxTextLen
+            )
+        }.getOrDefault("")
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (isInspectorShown) {
@@ -244,6 +268,25 @@ class A11yAutomatorService : AccessibilityService(), AutomatorService, IUiAutoma
     override fun stopOneshotTask(task: XTask) {
         task.halt(true)
     }
+
+    override fun executeAgentActionByTarget(
+        actionType: Int,
+        targetJson: String,
+        extraText: String,
+        callback: ITaskCompletionCallback
+    ) {
+        AgentActionDispatcher.dispatch(
+            actionType = actionType,
+            targetJson = targetJson,
+            // 空字符串 = 调用方"没传 text"（详见 AIDL 注释）
+            extraText = extraText.takeIf { it.isNotEmpty() },
+            scheduler = ::scheduleOneshotTask,
+            captureRoot = { runCatching { rootInActiveWindow }.getOrNull() },
+            callback = callback
+        )
+    }
+
+    override fun getLastAgentDiagnostic(): String = AgentActionDispatcher.getLastDiagnostic()
 
     override fun onInterrupt() {
 

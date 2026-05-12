@@ -14,7 +14,7 @@
 | `aidl` | 开启 |
 | ABI filters | `x86`, `arm64-v8a`, `x86_64` |
 | App Id | `top.xjunz.tasker` |
-| Version | `2.0.0` / code `200`（由根目录 `gradle.properties` 的 `APP_VERSION_NAME` / `APP_VERSION_CODE` 管理） |
+| Version | `2.1.0-alpha.1` / code `210`（由根目录 `gradle.properties` 的 `APP_VERSION_NAME` / `APP_VERSION_CODE` 管理） |
 | 签名 | 可选；配置完整时 debug/release 使用 `signingConfigs.custom`，否则使用默认 debug 签名或生成未签名 release |
 
 ### 1.1 `local.properties`（可选，本机配置）
@@ -148,6 +148,16 @@ debug 构建 `versionName` 自动后缀 `-debug`。
 | `CodeBodyReply.kt` | 回复统一结构 + 兑换 / 订单常量 |
 
 HTTPS 用 `ktor-client-cio`；没有自定义 TrustManager / SSL pinning。
+
+### 8.0 AI Provider 配置
+
+AI Provider 第一版采用 OpenAI-compatible HTTP 接口，不新增固定服务商依赖。配置入口在"更多"页的"AI 驱动"：
+
+- Base URL、API Key、模型名、启用开关、温度、最大输出 tokens、请求超时和语音理解最低置信度保存在 `Preferences`，不写入源码。
+- 请求骨架位于 `ai/provider/OpenAiCompatibleProvider.kt`，默认访问 `<baseUrl>/chat/completions`。
+- API Key 由用户自行提供，可为空以支持本机或内网兼容服务。
+- 当前默认值面向短文本意图理解：Base URL `https://api.deepseek.com`、模型名 `deepseek-chat`、温度 `0.2`、最大输出 `512` tokens、超时 `8000ms`、最低置信度 `0.6`。
+- Provider 只负责模型请求；AI 行动仍必须经过 `AiActionPlan`、`AiActionGate` 和现有任务执行管道。
 
 ### 8.1 更新检查逻辑
 

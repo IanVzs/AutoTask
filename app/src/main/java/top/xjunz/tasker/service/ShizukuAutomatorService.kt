@@ -172,6 +172,45 @@ class ShizukuAutomatorService : IRemoteAutomatorService.Stub, AutomatorService {
         delegate.scheduleOneshotTask(task.checksum, onCompletion)
     }
 
+    /**
+     * AI agent 动作派发（aidoc/17）：一律转给特权进程在它本地拿 root + 抽 criteria + 跑 task。
+     * 主进程不参与 task 组装——只主进程拿不到 AccessibilityNodeInfo 是这条路径存在的根本原因。
+     */
+    @Local
+    @Privileged
+    override fun executeAgentActionByTarget(
+        actionType: Int,
+        targetJson: String,
+        extraText: String,
+        callback: ITaskCompletionCallback
+    ) {
+        if (isAppProcess) {
+            // 跨进程仍传 String（非空），AIDL non-null 约束方便兼容
+            delegate.executeAgentActionByTarget(actionType, targetJson, extraText, callback)
+            return
+        }
+        ensurePrivilegedProcess()
+        AgentActionDispatcher.dispatch(
+            actionType = actionType,
+            targetJson = targetJson,
+            extraText = extraText.takeIf { it.isNotEmpty() },  // 空字符串当 null
+            scheduler = { task, cb -> oneshotTaskScheduler.scheduleTask(task, cb) },
+            captureRoot = { runCatching { uiAutomation.rootInActiveWindow }.getOrNull() },
+            callback = callback
+        )
+    }
+
+    @Local
+    @Privileged
+    override fun getLastAgentDiagnostic(): String {
+        // main 端走 AIDL 拉特权进程的诊断；特权进程内直接读本地 dispatcher 单例
+        return if (isAppProcess) {
+            runCatching { delegate.getLastAgentDiagnostic() }.getOrDefault("")
+        } else {
+            AgentActionDispatcher.getLastDiagnostic()
+        }
+    }
+
     @Privileged
     override fun stopOneshotTask(id: Long) {
         PrivilegedTaskManager.requireTask(id).halt(true)
@@ -188,6 +227,39 @@ class ShizukuAutomatorService : IRemoteAutomatorService.Stub, AutomatorService {
         } else {
             delegate.acquireWakeLock()
         }
+    }
+
+    /**
+     * 跨进程读屏：
+     * - 主进程调用：转发到 AIDL `delegate.captureUiSnapshotJson(...)`，让特权进程读屏。
+     * - 特权进程调用：本地用 `uiAutomation.rootInActiveWindow + freeze + AiNodeTreeCompactor`。
+     *
+     * 失败一律返回空字符串，让调用方走"下一轮重试"的兜底逻辑。
+     */
+    override fun captureUiSnapshotJson(maxNodes: Int, maxTextLen: Int): String {
+        if (isAppProcess) {
+            return runCatching { delegate.captureUiSnapshotJson(maxNodes, maxTextLen) }
+                .getOrDefault("")
+        }
+        ensurePrivilegedProcess()
+        val root = runCatching { uiAutomation.rootInActiveWindow }.getOrNull() ?: return ""
+        val frozen = runCatching {
+            top.xjunz.tasker.task.inspector.StableNodeInfo.Companion.run { root.freeze() }
+        }.getOrNull() ?: return ""
+        // 物理像素走 DisplayManagerBridge（@Anywhere），特权进程也能拿到。
+        val realSize = top.xjunz.tasker.bridge.DisplayManagerBridge.size
+        val compInfo = runCatching { a11yEventDispatcher.getCurrentComponentInfo() }.getOrNull()
+        return runCatching {
+            top.xjunz.tasker.task.inspector.shared.AiNodeTreeCompactor.compactToJson(
+                rootNode = frozen,
+                screenWidth = realSize.x,
+                screenHeight = realSize.y,
+                packageName = compInfo?.packageName,
+                activityName = compInfo?.activityName,
+                maxNodes = maxNodes,
+                maxTextLen = maxTextLen
+            )
+        }.getOrDefault("")
     }
 
     override fun releaseWakeLock() {

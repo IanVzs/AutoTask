@@ -121,6 +121,104 @@ make stop-service DEVICE=<adb设备序列号>
 
 处理后重新在 App 内启动自动化服务，再复现任务。
 
+### 2.11 反馈 AI 出错时，怎么把现场信息发给维护者？
+
+两种途径任选：
+
+**途径一：从 App 直接复制（用户自助）**
+
+打开语音页 → 找到红色"AI 返回内容无法解析"等记录卡片 → 点击展开"AI 调用详情"对话框 → 点底部的 **「复制全部」** 按钮，即可把"标题 + 时间 + 简述 + 完整 prompt + 原始返回 + 诊断信息"打包到剪贴板。粘贴到聊天里即可。
+
+如果只想要 AI 的原始返回（例如开发者只关心模型为什么吐了不合 schema 的 JSON），点 **「复制原始返回」** 即可。
+
+**途径二：用 logcat 抓完整链路（推荐给开发者）**
+
+所有 AI agent 链路的日志都走统一 tag `AiAgent`：
+
+```bash
+# 项目根目录下
+make logs
+# 或者直接：
+~/Android/Sdk/platform-tools/adb logcat -s AiAgent:*
+```
+
+按 section 分类：
+
+| section | 内容 |
+|---------|------|
+| `[planSession]` / `[planSession.prompt]` / `[planSession.response]` | 开场会话规划，prompt 长文本会自动按 ~3.5KB 分段输出 `[1/N] ...` |
+| `[nextAction]` / `[nextAction.prompt]` / `[nextAction.response]` | 每步 next action 决策的 prompt + raw response + 解析后的动作 |
+| `[snapshot]` | 每次屏幕抓取的 pkg / activity / 节点统计（不打节点详情，太长） |
+| `[execute]` | 每个动作执行结果，含命中节点摘要 |
+| `[session.start]` / `[session.end]` / `[session.outOfScope]` / `[session.denyCap]` / `[session.limit]` | session 生命周期与边界事件 |
+
+实现见 `app/src/main/java/top/xjunz/tasker/ai/agent/AiAgentLog.kt`。
+
+### 2.12 横屏 / 主题切换时 App 直接崩，堆栈最末是 `binder haven't been received`
+
+**现象**
+
+```
+java.lang.RuntimeException: Unable to destroy activity {top.xjunz.tasker/.../MainActivity}:
+    java.lang.IllegalStateException: binder haven't been received
+    at rikka.shizuku.Shizuku.requireService(Shizuku.java:430)
+    at rikka.shizuku.Shizuku.getVersion(Shizuku.java:526)
+    at rikka.shizuku.Shizuku.unbindUserService(Shizuku.java:807)
+    at top.xjunz.tasker.service.controller.ShizukuServiceController.unbindService(ShizukuServiceController.kt:164)
+    at top.xjunz.tasker.ui.main.MainActivity.onDestroy(MainActivity.kt:445)
+```
+
+**触发条件**
+
+- 横屏 / 系统主题切换 / 任何会触发 `MainActivity` 重建的 configChanges（项目 manifest 没禁用这些 configChanges 转发）。
+- **同时** Shizuku 没装、未启动、未授权，或 binder 在生命周期里中途断开。
+
+**根因**
+
+`MainActivity.onDestroy()` → `serviceController.unbindService()` → 直接调 `Shizuku.unbindUserService(...)`。Shizuku 内部会先 `getVersion() → requireService()`，binder 不在就抛 `IllegalStateException`，一路冒泡。`stopService()` 同样路径，同样隐患。
+
+**当前实现**
+
+`ShizukuServiceController` 抽出一个 `safeUnbindUserService(remove)` 私有方法：
+
+1. 先用 `Shizuku.pingBinder()` 廉价判断 binder 是否存在；不存在直接 return。
+2. 真正的 `Shizuku.unbindUserService(...)` 调用包 `runCatching`，失败仅 `Log.w` 不抛。
+
+`unbindService()` / `stopService()` 都改走这个 helper；附带把 `serviceInterface?.asBinder()?.unlinkToDeath(...)` 也用 runCatching 吞了 `NoSuchElementException`（重建时 deathRecipient 可能没注册过）。
+
+> 不用 `ShizukuUtil.isShizukuAvailable`：那个 getter 还检查 `checkSelfPermission`，太严；卸载场景需要解绑同样要走过去，binder 活着就够了。
+
+如果以后想从根上避免横屏重建，可以在 `MainActivity` 的 manifest 项加 `android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"`，但**会影响**资源切换 / Fragment 状态恢复，不是本次想做的事。
+
+### 2.10 覆盖安装后启动服务报 `Got an invalid binder!`
+
+**现象**
+
+- 覆盖安装新版本（debug 或 release）后，第一次打开 App 启动 Shizuku 服务，崩溃日志或反馈邮件里出现：
+
+  ```
+  java.lang.RuntimeException: Got an invalid binder!
+      at top.xjunz.tasker.service.controller.ShizukuServiceController$userServiceConnection$1.onServiceConnected(...)
+  ```
+- App 不会闪退；通常再点一次"启动服务"就能成功。
+
+**原因**
+
+Shizuku 的 `UserService` 通过 `UserServiceArgs.version(...)` 决定是否要重启远程 `:service` 进程。版本号变了（debug 用 `lastUpdateTime`、release 用 `versionCode`），Shizuku 会杀旧进程、起新进程；在新旧进程交接的瞬间，回调到 App 的 binder 可能已经是死的，`pingBinder()` 返回 false。
+
+这是 Shizuku UserService 重启策略带来的固有时序问题，App 自身代码没有错。
+
+**当前实现**
+
+`ShizukuServiceController.userServiceConnection.onServiceConnected` 检测到 invalid binder 时，会：
+
+1. 记录一条 `Got an invalid binder, auto retry #N` 警告日志。
+2. 间隔 `INVALID_BINDER_RETRY_DELAY_MILLS`（默认 800ms）后自动重新 `bindService()`，相当于替用户再点一次"启动服务"。
+3. 最多重试 `MAX_INVALID_BINDER_RETRY` 次（默认 2 次），仍失败才抛 `RuntimeException("Got an invalid binder after N retries")` 给 `listener.onError`，让 UI 报错给用户。
+4. 成功连接后清零计数；`stopService` / `unbindService` 时取消正在等待的 retry。
+
+调整重试参数请改 `ShizukuServiceController.MAX_INVALID_BINDER_RETRY` 和 `INVALID_BINDER_RETRY_DELAY_MILLS`；如果想在覆盖安装时减少触发概率，可以保留对 `stop-service` 的手动处理。
+
 ## 3. 构建 / 依赖问题
 
 | 现象 | 原因 | 解决 |

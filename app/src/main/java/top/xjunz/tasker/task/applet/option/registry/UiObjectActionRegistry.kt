@@ -176,8 +176,9 @@ class UiObjectActionRegistry(id: Int) : AppletOptionRegistry(id) {
             if (!node.isEditable) {
                 false
             } else {
+                // CoroutineUiObject.setText 现在真返回 boolean——node 不响应 ACTION_SET_TEXT
+                // (RN / Compose 自绘控件常见) 时返回 false，让 task isSuccessful 真实反映失败。
                 uiDevice.wrapUiObject(node).setText(text)
-                true
             }
         }
     }.withRefArgument<AccessibilityNodeInfo>(R.string.input_field)

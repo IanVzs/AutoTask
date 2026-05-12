@@ -104,13 +104,16 @@
 - 任务匹配：`VoiceCommandService.findTask()` 先按任务标题精确匹配，再做去空白/标点后的包含匹配；匹配到多个任务时不会执行，会提示用户说完整任务名。
 - 任务执行：当前只支持一次性任务（`XTask.TYPE_ONESHOT`）。匹配到一次性任务后复用现有入口：`LocalTaskManager.addOneshotTaskIfAbsent(task)` + `currentService.scheduleOneshotTask(...)`。匹配到常驻任务时只提示，不直接启用或运行。
 - 结果展示：`VoiceCommandService.uiState` 输出 `VoiceCommandUiState` 和倒序 `VoiceCommandRecord`；`VoiceCommandFragment` 展示当前状态、最近识别文本、解析命令、匹配任务和执行记录。toast 和前台通知仍保留为即时反馈。
+- 文本输入：语音状态卡片下方提供“文字指令”卡片，内含输入框和发送按钮；提交后直接走 `VoiceCommandService.ACTION_HANDLE_TEXT`，省去 ASR 步骤；如果语音服务未运行，会临时启动服务处理文本，处理完成后自动停止。
 
 AI 接入预留：
 
-- 语音页已经具备展示“识别文本、解析命令、匹配任务、执行结果”的状态区域，后续可以在这条状态流中插入 AI 理解步骤。
+- 语音页已经具备展示“识别文本、解析命令、匹配任务、执行结果”的状态区域；语音识别文本和手动输入文本都会先尝试 `VoiceAiInterpreter`。
+- AI 不响应、欠费、超时、返回格式错误或未启用时，不中断原功能，继续回退到 `VoiceCommandParser.parseRunTaskQuery()` 的现有规则解析。
 - AI 不应直接绕过 `VoiceCommandService` 执行系统动作。建议先让 AI 输出结构化意图，再由本地代码匹配现有任务或生成任务草稿。
 - 任务草稿必须进入编辑器预览和用户确认，不要让 AI 在后台直接保存或运行新任务。
 - 详细设计见 `14-ai-integration.md`。
+- AI Provider 配置入口当前放在"更多"页的"AI 驱动"选项，保存 AI 开关、OpenAI-compatible Base URL、API Key、模型名和高级参数；默认使用 DeepSeek 兼容接口。这些配置只建立模型服务入口，不代表 AI 可以绕过行动计划和授权门禁。
 
 阿里云 ASR 的 `AppKey` 与 `Token` 获取：
 

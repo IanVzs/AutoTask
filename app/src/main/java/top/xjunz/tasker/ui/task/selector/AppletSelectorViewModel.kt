@@ -124,10 +124,13 @@ class AppletSelectorViewModel(states: SavedStateHandle) : FlowViewModel(states) 
     }
 
     fun acceptAppletsFromAutoClick(applets: List<Applet>) {
-        val containsUiObject = factory.uiObjectFlowRegistry.containsUiObject.yield() as Flow
+        // 把"包成 containsUiObject Flow + 设 reference / referent"这一段抽到了
+        // 公共 NodeToActionAssembler，AI agent "保存为任务" 流程也会复用。
         val editor = AppletReferenceEditor(false)
-        editor.setReference(containsUiObject, 0, R.string.current_window.str)
-        editor.setReferent(containsUiObject, 0, R.string.matched_ui_object.str)
+        val containsUiObject =
+            top.xjunz.tasker.task.inspector.shared.NodeToActionAssembler.wrapAsContainsUiObject(
+                applets, editor
+            )
         if (flow.isEmpty()) {
             val comp = a11yAutomatorService.a11yEventDispatcher.getCurrentComponentInfo()
             val isCertainApp = factory.applicationRegistry.isCertainApp.yield(1 to comp.packageName)
@@ -144,7 +147,7 @@ class AppletSelectorViewModel(states: SavedStateHandle) : FlowViewModel(states) 
         } else {
             containsUiObject.relation = Applet.REL_OR
         }
-        containsUiObject.addAll(applets)
+        // applets 已经在 wrapAsContainsUiObject 里加进 containsUiObject，无需重复 addAll。
         flow.add(containsUiObject)
         notifyFlowChanged()
     }
