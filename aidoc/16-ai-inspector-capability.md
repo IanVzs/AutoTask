@@ -409,7 +409,7 @@ Phase 2.A 只读快照 + Phase 2.B 可执行节点 + Phase 2.C 写入兜底，**
 
 ### 13.5 已知 follow-up（不阻塞验证）
 
-- agent 任务定位为**独立运行、跑完即丢**，结束后**不**生成可重放 XTask 草稿（2026-05-13 决策，详见 `aidoc/13-todo.md` 2.1）。结果通过通知告知用户；执行心得用"经验本"沉淀（见 `aidoc/20-experience-book-design.md`）。
+- agent 任务定位为**独立运行、跑完即丢**，结束**不**自动生成可重放 XTask（2026-05-13）。改为：① 通过通知告知用户成功 / 失败结果；② 执行心得用"经验本" (`ai/agent/experience/`) 沉淀，下次同类任务开局召回注入 prompt；③ 成功经验（outcome=Completed）支持用户在 UI 主动点击"一键转任务草稿"，由 `ExperienceToTaskConverter` 翻成 XTask 弹 FlowEditor 让用户审核（见 `aidoc/20-experience-book-design.md`）。
 - 节点压缩规则比较粗暴（`MAX_NODES = 80`、`MAX_TEXT_LEN = 80`），没做按 App 类别差异化；密码 / 银行卡 / CVV 等敏感字段也尚未做白名单 redact，仅依赖 `give_up` 行为指南让 AI 自己回避。
 - Plan 阶段 `targetAppPackage` 完全信任 AI；如果 AI 给了错的包名，scope 检查后续会拦下来，但用户体验是"开了一次会话，第一步就 OutOfScope"。下一轮可以加"`PackageManagerBridge` 校验包名实际存在 + 弹窗里允许用户改"。
 - 没做"取消运行中 session"的 UI；用户当前只能停掉语音监听服务来强制中断（`scope.cancel()` 会让 `coroutineScope` 抛出 CancellationException → 走到 `AiError` 分支）。下一轮加一个"中止 agent"按钮。
@@ -553,7 +553,7 @@ A11y 模式下 `currentService` 不是 `ShizukuAutomatorService.Stub` 而是 `A1
 |---|---|---|
 | `UiTreeQuery.kt` | 抓 root + freeze + DFS 查找 | `ScreenSnapshotProvider`（已迁）/ `AiAgentExecutor`（已迁）/ 未来 inspector 自身可迁 |
 | `NodeCriteriaExtractor.kt` | 节点 → Criterion Applet 候选（从 `NodeInfoOverlay.collectProperties` 抽，**语义和顺序严格对齐**） | `NodeInfoOverlay.collectProperties`（已迁）/ `AiAgentTaskAssembler.buildTaskFromRealNode`（一次性临时 task） |
-| `NodeToActionAssembler.kt` | Criterion 候选 → `containsUiObject` Flow（从 `acceptAppletsFromAutoClick` 抽 wrap 部分） | `AppletSelectorViewModel.acceptAppletsFromAutoClick`（已迁）/ `AiActionToTask` 旧草稿翻译路径 |
+| `NodeToActionAssembler.kt` | Criterion 候选 → `containsUiObject` Flow（从 `acceptAppletsFromAutoClick` 抽 wrap 部分） | `AppletSelectorViewModel.acceptAppletsFromAutoClick`（已迁）/ `AiActionToTask` 旧草稿翻译路径 / `ExperienceToTaskConverter` 经验本→草稿 |
 | `AiUiTargetExtractor.kt` | 真节点 → `AiUiTarget`（"换一个"反向通道） | `CandidateListPicker`（V1）/ 未来 V2 inspector 接管 |
 
 调用方迁移后，**inspector 现有"用户手选节点 → Criterion / 自动点击"行为不变**，只是底层走公共代码。
