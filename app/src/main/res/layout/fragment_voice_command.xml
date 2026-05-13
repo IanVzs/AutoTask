@@ -87,6 +87,90 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_experience_book"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackground"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="0dp"
+                app:strokeColor="?colorOutlineVariant"
+                app:strokeWidth="1dp">
+
+                <androidx.constraintlayout.widget.ConstraintLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="16dp">
+
+                    <!--
+                      ~ icon 跟 title+subtitle 垂直居中（不包括 usage）；这样 usage 行可以自然延伸到下方，
+                      ~ 整体文字块从 padding 顶部开始排，不会出现"icon 居中导致文字上方空白"的视觉错位。
+                      -->
+                    <com.google.android.material.imageview.ShapeableImageView
+                        android:id="@+id/iv_experience_icon"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="?colorSecondaryContainer"
+                        android:scaleType="centerInside"
+                        android:src="@drawable/ic_baseline_auto_awesome_24"
+                        app:contentPadding="8dp"
+                        app:layout_constraintBottom_toBottomOf="@+id/tv_experience_subtitle"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toTopOf="@+id/tv_experience_title"
+                        app:shapeAppearance="@style/ShapeAppearance.Material3.Corner.Full"
+                        app:tint="?colorOnSecondaryContainer" />
+
+                    <TextView
+                        android:id="@+id/tv_experience_title"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:text="@string/ai_experience_book_card_title"
+                        android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+                        app:layout_constraintEnd_toStartOf="@+id/iv_experience_arrow"
+                        app:layout_constraintStart_toEndOf="@+id/iv_experience_icon"
+                        app:layout_constraintTop_toTopOf="parent" />
+
+                    <TextView
+                        android:id="@+id/tv_experience_subtitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:alpha=".72"
+                        android:text="@string/ai_experience_book_card_subtitle"
+                        android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
+                        app:layout_constraintEnd_toEndOf="@+id/tv_experience_title"
+                        app:layout_constraintStart_toStartOf="@+id/tv_experience_title"
+                        app:layout_constraintTop_toBottomOf="@+id/tv_experience_title" />
+
+                    <TextView
+                        android:id="@+id/tv_experience_usage"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:alpha=".82"
+                        android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintStart_toStartOf="parent"
+                        app:layout_constraintTop_toBottomOf="@+id/tv_experience_subtitle"
+                        tools:text="已记录 12 条 · 占用 38 KB" />
+
+                    <ImageView
+                        android:id="@+id/iv_experience_arrow"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:contentDescription="@string/ai_experience_book_card_title"
+                        android:src="@drawable/ic_chevron_right_24px"
+                        app:layout_constraintBottom_toBottomOf="@+id/tv_experience_title"
+                        app:layout_constraintEnd_toEndOf="parent"
+                        app:layout_constraintTop_toTopOf="@+id/tv_experience_title"
+                        app:tint="?colorOnSurfaceVariant" />
+                </androidx.constraintlayout.widget.ConstraintLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <com.google.android.material.card.MaterialCardView
                 android:id="@+id/card_text_command"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

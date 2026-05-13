@@ -159,6 +159,34 @@
     <string name="voice_record_agent_service_not_connected">AI agent 启动失败：AutoTask 服务未启动</string>
     <string name="voice_record_agent_service_not_connected_detail">AI 需要通过 AutoTask 服务读取屏幕节点。请回到 AutoTask 主页，确认「启动服务」处于已开启状态（Shizuku 或 无障碍 任一模式都行），然后重试。</string>
 
+    <string name="ai_agent_outcome_channel_name">AI agent 执行结果</string>
+    <string name="ai_agent_outcome_channel_desc">AI agent 任务执行结束（成功 / 失败 / 中止）后的结果通知</string>
+    <string name="format_ai_agent_outcome_notification_text">「%1$s」%2$s</string>
+
+    <string name="voice_record_agent_experience_recalled">召回历史经验</string>
+    <string name="format_voice_record_agent_experience_recalled">从经验本召回 %1$d 条相关历史，AI 将参考它们规划下一步</string>
+
+    <string name="ai_experience_book_card_title">AI 经验本</string>
+    <string name="ai_experience_book_card_subtitle">查看 AI 历史执行记录，把成功经验一键转成任务草稿</string>
+    <string name="format_ai_experience_book_card_usage">已记录 %1$d 条 · 占用 %2$s</string>
+    <string name="ai_experience_book_card_usage_empty">还没有记录</string>
+    <string name="ai_experience_book_dialog_title">AI 经验本</string>
+    <string name="ai_experience_book_empty">还没有 AI 执行记录。让 AI 跑一次任务后再回来看。</string>
+    <string name="ai_experience_book_clear">清空</string>
+    <string name="ai_experience_book_clear_confirm">清空经验本？这会删除所有历史记录，AI 将失去这些长期记忆。</string>
+    <string name="ai_experience_book_close">关闭</string>
+    <string name="ai_experience_book_to_draft">转任务草稿</string>
+    <string name="ai_experience_book_to_draft_unsupported">该会话未成功完成，无法转换成草稿</string>
+    <string name="ai_experience_book_to_draft_empty">没有可转换的步骤</string>
+    <string name="ai_experience_book_to_draft_success">已生成草稿，可在编辑器里继续打磨</string>
+    <string name="ai_experience_book_delete">删除</string>
+    <string name="ai_experience_book_delete_confirm">删除这条经验？</string>
+    <string name="ai_experience_book_view_full">查看完整记录</string>
+    <string name="format_ai_experience_book_meta">%1$s · %2$d 步 · %3$s</string>
+    <string name="ai_experience_book_no_app">未指定 App</string>
+
+    <string name="page_title_ai">人工智能</string>
+
     <string name="agent_authorize_dialog_title">AI agent 任务级授权</string>
     <string name="agent_authorize_allow">允许这次</string>
     <string name="agent_authorize_deny">拒绝</string>

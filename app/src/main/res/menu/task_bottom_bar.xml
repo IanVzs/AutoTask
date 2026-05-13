@@ -21,8 +21,8 @@
 
     <item
         android:id="@+id/item_voice_command"
-        android:icon="@drawable/ic_mic_24px"
-        android:title="@string/voice_command_short" />
+        android:icon="@drawable/ic_baseline_auto_awesome_24"
+        android:title="@string/page_title_ai" />
 
     <item
         android:id="@+id/item_more"

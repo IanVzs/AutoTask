@@ -125,7 +125,7 @@ class AppletSelectorViewModel(states: SavedStateHandle) : FlowViewModel(states) 
 
     fun acceptAppletsFromAutoClick(applets: List<Applet>) {
         // 把"包成 containsUiObject Flow + 设 reference / referent"这一段抽到了
-        // 公共 NodeToActionAssembler，AI agent "保存为任务" 流程也会复用。
+        // 公共 NodeToActionAssembler，与旧 AI 草稿翻译 (AiActionToTask) 共享同一个 wrap 实现。
         val editor = AppletReferenceEditor(false)
         val containsUiObject =
             top.xjunz.tasker.task.inspector.shared.NodeToActionAssembler.wrapAsContainsUiObject(

@@ -95,6 +95,23 @@ object Preferences {
     /** 决策面板上是否显示"换一个"按钮。 */
     var aiAgentConfirmAllowReplace by global.primitive("ai_agent_confirm_allow_replace", true)
 
+    /**
+     * AI agent 经验本（cross-session 长期记忆）总开关。
+     * 关闭后 session 跑完不再写盘，新 session 开局也不召回历史经验。
+     */
+    var aiAgentExperienceBookEnabled by global.primitive("ai_agent_experience_book_enabled", true)
+
+    /**
+     * 经验本目录硬上限（字节），超出后按 [AiAgentExperienceBook.evictIfOverBudget] 淘汰。
+     * 默认 1 MB，约容纳 500-1000 条经验。
+     */
+    var aiAgentExperienceMaxBytes by global.primitive("ai_agent_experience_max_bytes", 1024 * 1024)
+
+    /**
+     * 每次新 session 开局召回 top-N 条经验注入 prompt。0 = 关闭召回（仅写不读）。
+     */
+    var aiAgentExperienceRecallTopN by global.primitive("ai_agent_experience_recall_top_n", 3)
+
     init {
         // 老用户迁移：旧默认 8000ms 太短，agent 模式下 prompt 长 + DeepSeek 抖动会经常 timeout。
         // 任何持久化值 < 15000 都强制升级到 30000，给一次性"健康检查"机会。

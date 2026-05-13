@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicLong
  * **架构对照**（见 `aidoc/16-ai-inspector-capability.md` §13.8）：
  * - agent 的"动作执行"复用 AutoTask 现有的 Applet 管道，**不再**自己写 `performAction`。
  * - 跨进程问题、节点定位、a11y / Shizuku 双模式适配全部由现有 task 管道解决。
- * - 输出的 [XTask] 保留 [Applet] 序列；将来"agent 跑完保存为可重放任务"只需把多个临时 task merge 成大 task。
+ * - 输出的 [XTask] 是**一次性**的，跑完即丢；agent 已经决定独立运行，不再为"保存为可重放任务"做沉淀。
  *
  * 不支持的动作（[AiAgentAction.Done] / [GiveUp] / [Unknown] / [Wait] / [Scroll]）返回 null：
  * - Done / GiveUp / Unknown：session 终止，不应执行；

@@ -20,8 +20,14 @@ import top.xjunz.tasker.task.editor.AppletReferenceEditor
  *
  * - **inspector 自动点击**：调 [wrapAsContainsUiObject] 拿到 Flow，再决定是否往 ViewModel 的 flow 里
  *   追加 isCertainApp + activityCollection（这部分依赖 service 状态，留在调用方）。
- * - **AI agent "保存为任务"** （未来 follow-up 2.1）：直接调 [wrapAsContainsUiObject]，
- *   逐条把 agent 历史的命中节点 → 同一个 wrap，构造可重放 XTask。
+ * - **旧 AI 草稿翻译**（[top.xjunz.tasker.ai.translator.AiActionToTask]）：把 AI 输出的 step
+ *   翻译成可执行 task 时复用 wrap 逻辑。
+ *
+ * **AI agent 运行期不通过本类**：agent 单步动作走 [AiAgentTaskAssembler.buildTaskFromRealNode]
+ * 自己 wrap（因为它跑在 :service 特权进程，本类用到的 `.str` 扩展会取 `App.instance` 崩）。
+ * Agent 任务跑完即丢、不会自动落 XTask；但**经验本**
+ * ([top.xjunz.tasker.ai.agent.experience.ExperienceToTaskConverter]) 在用户主动点击
+ * "成功经验 → 任务草稿"时复用本类，把多步 step 序列翻译成可编辑 XTask 弹 FlowEditor。
  *
  * 不在这里做的事：
  * - 不操作 [top.xjunz.tasker.engine.task.XTask] / RootFlow / Do 这些任务级容器

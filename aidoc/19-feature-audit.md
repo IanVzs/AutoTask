@@ -159,31 +159,91 @@ RootFlow
 
 **⚠️ 3 处真差异 + 2 个潜在问题 + 1 个真 bug（5/11 19:50 抓到）**：
 
-#### P3. matchIndex 在 task 二次匹配中丢失（**真 bug**，5/11 19:50 抓到）
+#### P3-P5. 5/11 小红书测试抓到的 3 个深层 bug（**纠正之前的错诊断和错图**）
 
-**现场**：小红书搜索结果页，AI 想点第 4 个笔记卡片：
-```json
-{ "type": "click", "target": { "viewId": "com.xingin.xhs:id/0_resource_name_obfuscated", "matchIndex": 3 } }
+**现场（修正）**：小红书搜索结果页，**屏幕实际只有 3 张笔记卡片**（不是我之前编的 6 张），AI 想点的就是**左上第 1 张**「🎂6 寸戚风」。
+
+实际 snapshot 关键节点（5/11 19:50 step=7 prompt 原文）：
+```
+#3 [FrameLayout] [CL] viewId=...obfuscated  bounds=(17,640,600,1766)    ← 左上 卡片1（🎂蛋糕，AI 想点的）
+  └─ #4 [TextView] [-] text="🎂6寸戚风超详细步骤..." bounds=(45,1452,572,1606)
+#5 [FrameLayout] [CL] viewId=...obfuscated  bounds=(616,640,1199,1768)  ← 右上 卡片2
+  └─ #6 [TextView] [-] text="咔咔一顿搅..."
+#7 [FrameLayout] [CL] viewId=...obfuscated  bounds=(17,1783,600,2640)   ← 左下 卡片3
 ```
 
-- main 进程 `previewTargetBounds` 正确处理 matchIndex → 红框画在第 4 个笔记位置 ✅
-- service 端 `findRealNode` 正确处理 matchIndex → 命中真节点 X（第 4 个笔记 FrameLayout）✅
-- **但** `AiAgentTaskAssembler.buildTaskFromRealNode(X)` 用 `NodeCriteriaExtractor.extract(X).criteria.filter(semanticIndices)` —— **X 是无 text 容器，semanticIndices 只剩 viewId + className**
-- 多个笔记卡片**共享同 viewId** + className=FrameLayout
-- task 跑到执行端 `containsUiObject.findFirst` 用这两个字段在 root 上重新找 → **命中第 0 个匹配节点 = RecyclerView，不是第 4 个笔记**
-- click action 对 RecyclerView perform 成功 → silent fail（屏幕不变）
+注意 viewId 是**所有节点共享的同一个 obfuscated id**，连 RecyclerView/Button/View 都是同 id，全屏 30+ 个节点共享。
 
-**根因**：matchIndex 在 dispatcher 阶段处理过，但 **task 树的 criteria 抽取丢掉了"我要的是第 N 个匹配节点"的信息**。dispatcher 拿到 X 后走"包 task → 执行端 containsUiObject 二次匹配"链路，X 在 task 树里只剩"字段集"不剩"具体那个节点指针"，遇到多节点共享字段就失效。
+#### P3. snapshot 节点编号 #N 跟 matchIndex 完全不是一回事，AI 误用（**真 bug 之 1**）
 
-**修法（暂未做，等用户拍板）**：
+**Step 7 现场**：AI 在 reflection 写「目标节点#4 的父容器#3 有[CL]标记，应点击父容器 FrameLayout」 → AI 想点的是 **#3** FrameLayout（卡片本身）。
+
+AI 输出：
+```json
+{ "type": "click", "target": { "viewId": "...obfuscated", "matchIndex": 3 } }
+```
+
+**AI 把 snapshot 里的 `#3` 编号当成 `matchIndex=3` 了**——这两个数字含义完全不同：
+- `#N` = AI 看到的 prompt 节点列表里的第 N 行（仅展示用）
+- `matchIndex` = "在所有满足 target 字段筛选条件的节点中取第几个"
+
+我之前从来**没在 prompt 里说清楚这两者的区别**，AI 自然就误用了。
+
+**修法**：prompt 加一段说明：「`#N` 是 snapshot 列表展示用的行号，跟 `matchIndex` 没关系。`matchIndex` 是「按你的 target 字段筛选完之后取第几个」。如果你想点 snapshot 里 #3 那一行，应该想办法让 target 字段唯一锁定它（用 text/desc + className 联合），别用 matchIndex。」
+
+#### P4. dispatcher.findRealNode 在共享 viewId 海里 BFS 顺序无法预测（**真 bug 之 2**）
+
+即使 AI 写对了 matchIndex，**屏幕上 30+ 个节点共享同一个 obfuscated viewId**——`AgentActionDispatcher.collectMatches` BFS 取所有匹配节点，按子树遍历顺序排序：
+- BFS 取到的"第 4 个" 跟 AI 看到的 snapshot 顺序**没法保证一致**——AiNodeTreeCompactor 已经做过节点压缩 + 屏幕外节点丢弃，AI 看到的节点编号跟执行端 root 上的 BFS 顺序**结构不一样**。
+
+step 7 dispatcher 报命中 RecyclerView，就是这个问题——`viewId only` 匹配范围太宽（30+ 节点），matchIndex=3 在乱序里取的是 RecyclerView 不是 AI 想要的笔记 FrameLayout。
+
+**根因 = AI target 字段太宽**：viewId 不是唯一字段，靠 matchIndex 兜底是脆弱的。
+
+**修法**：跟 P3 同源——prompt 强制要求 AI 选 target 时**必须用语义字段唯一锁定**（text/desc + className 联合），不允许只给共享 viewId + matchIndex。
+
+#### P5. task 二次匹配 textEquals 用完整长 text 含 emoji 容易丢节点（**真 bug 之 3**）
+
+**Step 6 现场**：AI 用文本匹配（**做对了**）：
+```json
+{ "type": "click", "target": { "textContains": "6寸戚风超详细步骤" } }
+```
+
+- dispatcher.findRealNode 用 textContains 匹中 X = #4 TextView ✅
+- 红框画在 bounds=(45,1452,572,1606) ← 文本 label 位置（正确）
+- 但 task 跑失败，dispatcher 报：「节点 命中了但 perform 没生效，可能 RN 自绘控件不响应 a11y action」
+
+**这个错误诊断 message 是我之前写的死消息**——实际 task isSuccessful=false 不一定是 perform 失败，**更可能是 task 二次匹配根本没找到节点**：
+
+`AiAgentTaskAssembler.buildTaskFromRealNode(#4)` 抽 criteria：
+- viewId = obfuscated（共享）
+- textEquals = 完整长 text **含 🎂 emoji**（150+ 字符）
+- className = TextView
+
+task 跑到执行端 `containsUiObject.findFirst` 用 `viewId AND textEquals AND className` 匹中：
+- viewId 全屏共享，单字段匹中 30+ 节点
+- textEquals 全字匹配——如果两次抓取间小红书 refresh 了节点 text（比如截断、加省略号、emoji 编码归一化），完整长 text 就匹不中了
+- className=TextView 也共享
+
+任意一个字段微小变化 → containsUiObject 找不到节点 → task isSuccessful=false → click action 被 relation gate 跳过 → callback false。
+
+**根因**：
+1. AiAgentTaskAssembler 把 X 的完整长 text 直接用作 textEquals，遇到瞬时 text 变化就匹不中
+2. 我代码里 dispatcher.dispatch 的 wrapped callback 错把 task 失败一律报成"命中了但 perform 没生效"，**误导我自己好多天**（一直以为是 RN/OEM 不响应，其实是二次匹配丢节点）
+
+#### P3+P4+P5 修法
+
+3 个 bug 互相纠缠，但**根因都是同一句话**：「task pipeline 走"找节点 → 包 task → 执行端再找一次"的双匹配链路，第二次找的稳定性远远不如第一次」。
 
 | 方案 | 内容 | 优 | 缺 |
 |---|---|---|---|
-| A. dispatcher 直接对 X perform | 跳过 task 二次匹配，dispatcher 用 inspector 的 `UiObjectActionRegistry.click` 同款 fallback 逻辑直接对 X 调 `performAction` / `wrapUiObject.click()` | 最 KISS，底层 API 完全复用 inspector 代码 | 不走 task pipeline，跟"复用 inspector 链路"约束有出入 |
-| B. AiAgentTaskAssembler 加更多区分字段 | criteria 加 child 节点 text / bounds 等 X 唯一标识 | 仍走 task pipeline | inspector 的 NodeCriteriaExtractor 没这种字段，需要扩展，且不一定能区分 |
-| C. ContainsUiObject 加 matchIndex criterion | 让 containsUiObject 支持"取第 N 个匹配" | 完整复用 inspector | 改核心 applet，影响 inspector 用户的 task 行为 |
+| **A (推荐，2026-05-13 决策)** | 跳过 task 二次匹配，dispatcher 用 inspector 的 `UiObjectActionRegistry.click` 同款 fallback 逻辑直接对 X 调 `performAction` / `wrapUiObject.click()` | 最 KISS，3 个 bug 一次根治；与"agent 独立运行 / 跑完即丢"定位一致 | 不走 task pipeline——AI agent 只能**当场**执行 |
+| ~~A.1~~ | A + 同时把执行步骤生成 task 草稿写进 step record → 用户点"保存为任务"时合并草稿弹给用户在 task editor 里手工调整 | 实时 work + 草稿可保存 | **已废弃**：agent 改为独立运行、不再生成草稿（见 `aidoc/13-todo.md` 2.1） |
+| ~~D~~ | 新增 `DynamicUiObjectFinder` applet，task 里存"基础条件 + 选择策略"，每次重跑时按策略动态定位 | 实时 work + 真持久化 + 用户可调策略 | **已弃置**：同上，agent 不再追求重跑能力 |
 
-**推荐方案 A**：dispatcher 是 AI agent 实时执行的入口，X 已经握在手上，没必要再走"二次匹配"。inspector 离线 task 走二次匹配是因为执行时节点 ID 已变，必须靠字段重新找；AI agent 是同一帧内拿到 X 立刻执行，没有"节点失效"的问题。
+执行心得通过"经验本"沉淀让 AI 越来越聪明（见 `aidoc/20-experience-book-design.md`），不再依赖"保存为任务"路径。
+
+**修复诊断 message**：不论选哪个方案，`AgentActionDispatcher.dispatch` 的 wrapped callback 那段 message 必须改——不能再把 task 失败死消息写成"命中了但 perform 没生效，可能 RN 不响应"。改成更准的：「task 二次匹配未命中节点（target 字段在执行端 root 上找不到匹配），可能是节点 text 变化或字段范围太宽」。
 
 #### 其他 4 项不变（A/B/C 真差异 + P1/P2 已修）
 

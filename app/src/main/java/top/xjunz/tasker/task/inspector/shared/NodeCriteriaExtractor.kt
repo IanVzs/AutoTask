@@ -11,15 +11,15 @@ import top.xjunz.tasker.task.applet.option.AppletOptionFactory
 /**
  * 把一个 `AccessibilityNodeInfo` 抽成一组 **Criterion Applet 候选**。
  *
- * 历史上这套逻辑只在 `NodeInfoOverlay.collectProperties` 里写死，导致：
- * - AI agent 想"把执行轨迹沉淀成可重放任务"时只能照抄一份，两边漂移。
- * - 给 capability 加新字段（例如"在第几行 RecyclerView 子项里"）要改两处。
+ * 历史上这套逻辑只在 `NodeInfoOverlay.collectProperties` 里写死，给 capability 加新字段
+ * （例如"在第几行 RecyclerView 子项里"）要改两处。
  *
  * 抽到这里以后两边都走同一份代码：
  * - `NodeInfoOverlay.collectProperties` → 调 [extract]，把 [Result.criteria] 列出来给用户勾选；
  *   `Result.defaultUncheckedIndices` 决定哪几条默认不勾。
- * - `AiAgentExecutor` "保存为任务"流程 → 调 [extract]，把 [Result.criteria] 直接交给
- *   [NodeToActionAssembler] 包成 `containsUiObject`，跟人类用户手选完全一致。
+ * - [AiAgentTaskAssembler.buildTaskFromRealNode] 一次性临时 task 流程 → 调 [extract]，
+ *   按 [Result.semanticIndices] 过滤出语义字段，包成 `containsUiObject` 做执行端二次定位。
+ *   AI agent 跑完即丢，**不**进入用户编辑器、**不**生成任何持久化草稿。
  *
  * 这套 if 链的语义和顺序与原 `collectProperties` 严格一致，**不要随意调整顺序**——
  * 用户已经习惯了 inspector 列表里这个排列方式，改顺序会破坏使用习惯。

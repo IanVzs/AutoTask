@@ -49,7 +49,14 @@ class AiAgentSession(
      */
     private val overlay: AiAgentOverlayController? = null,
     private val picker: AiAgentNodePicker = InspectorPickerStub(),
-    private val callbacks: Callbacks
+    private val callbacks: Callbacks,
+    /**
+     * **跨 session 长期记忆**：会话开始前由调用方（[top.xjunz.tasker.voice.VoiceCommandService.runAgentFlow]）
+     * 调用 [top.xjunz.tasker.ai.agent.experience.AiAgentExperienceBook.recall] 召回的相关历史经验。
+     * 整段透传给 [AiAgentPlanner.nextAction] 注入 prompt，session 内不重新召回（避免每步 IO）。
+     * 默认空：未配置经验本 / 用户关闭 / 第一次跑都是合理的"空"。
+     */
+    private val experiences: List<top.xjunz.tasker.ai.agent.experience.ExperienceRecallEntry> = emptyList()
 ) {
 
     interface Callbacks {
@@ -334,7 +341,8 @@ class AiAgentSession(
                 deadTargets = deadList,
                 failedStrategies = failedList,
                 stuckHits = consecutiveUnproductiveSteps,
-                stuckThreshold = STUCK_FORCED_REPLAN_AT
+                stuckThreshold = STUCK_FORCED_REPLAN_AT,
+                experiences = experiences
             )
 
             val action = nextResult.action
@@ -787,7 +795,8 @@ private fun AiAgentAction.requiredCapability(): top.xjunz.tasker.ai.model.AiCapa
 }
 
 /**
- * Session 的最终结果。所有分支都带 history，便于上层做"是否保存为任务"等后续处理。
+ * Session 的最终结果。所有分支都带 history 仅用于 outcome 详情展示（语音页 records 卡片）
+ * 和结果通知正文拼装；agent 任务独立运行、跑完即丢，**不**用于反向生成可保存的 XTask 草稿。
  */
 sealed class AiAgentSessionOutcome {
     abstract val history: List<AiAgentStepRecord>

@@ -45,7 +45,7 @@ object AiAgentTaskAssembler {
 
     /**
      * 给临时 task 一个全局唯一 checksum；用 nanoTime 当种子保证不同步并发不冲突。
-     * 不参与持久化校验（agent 临时 task 跑完即丢）。
+     * 不参与持久化校验——agent 任务独立运行，跑完即丢，**不**进编辑器、**不**反向生成草稿。
      */
     private val checksumCounter = AtomicLong(System.nanoTime())
 

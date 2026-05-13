@@ -8,7 +8,6 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 import top.xjunz.tasker.Preferences
 import top.xjunz.tasker.ai.AiJson
 import top.xjunz.tasker.ai.model.AiCapability
@@ -126,7 +125,14 @@ object AiAgentPlanner {
          * ≥ [stuckThreshold] 时 prompt 加 STUCK 警示要求 AI 强制反思 + 换方向。
          */
         stuckHits: Int = 0,
-        stuckThreshold: Int = 3
+        stuckThreshold: Int = 3,
+        /**
+         * **跨 session 长期记忆**：会话开局由 [AiAgentSession] 调
+         * [top.xjunz.tasker.ai.agent.experience.AiAgentExperienceBook.recall] 召回 top-N
+         * 与本次任务最相关的历史经验，整段透传给 prompt 注入。null / 空 = 不注入。
+         * AI 可以在 reflection 里参考这些经验避坑或抄已知可行路径。
+         */
+        experiences: List<top.xjunz.tasker.ai.agent.experience.ExperienceRecallEntry> = emptyList()
     ): AiAgentNextActionResult {
         val provider = AiProviderFactory.createConfiguredProvider()
         if (provider == null) {
@@ -138,7 +144,10 @@ object AiAgentPlanner {
                 providerError = "provider_unconfigured"
             )
         }
-        val prompt = buildNextActionPrompt(userGoal, history, snapshot, plan, maxSteps, deadTargets, failedStrategies, stuckHits, stuckThreshold)
+        val prompt = buildNextActionPrompt(
+            userGoal, history, snapshot, plan, maxSteps,
+            deadTargets, failedStrategies, stuckHits, stuckThreshold, experiences
+        )
         AiAgentLog.i(
             "nextAction",
             "step=${history.size} pkg=${snapshot?.packageName} nodes=${snapshot?.nodes?.size ?: 0} → 请求"
@@ -261,7 +270,8 @@ $userGoal
         deadTargets: List<String>,
         failedStrategies: List<String>,
         stuckHits: Int,
-        stuckThreshold: Int
+        stuckThreshold: Int,
+        experiences: List<top.xjunz.tasker.ai.agent.experience.ExperienceRecallEntry> = emptyList()
     ): String {
         val historySection = buildHistorySection(history)
         val snapshotSection = buildSnapshotSection(snapshot)
@@ -289,6 +299,31 @@ $userGoal
             appendLine("  ② 直接 give_up，让用户接管。")
             appendLine("**禁止**：再选一遍 deadTargets / failed strategies 里的任何东西，或换 className 但保持 text 不变这种伪'换方向'。")
         }.trimEnd()
+        // **跨 session 经验本**：会话开局召回的 top-N 历史经验，给 AI 看以前在类似任务上学到的关键路径 / 已知陷阱
+        val experienceSection = if (experiences.isEmpty()) "" else buildString {
+            appendLine()
+            appendLine("📚 你以前在类似任务上的经验（仅供参考；UI 可能已变化，要先用 observation 现场验证）：")
+            experiences.forEachIndexed { i, e ->
+                appendLine("--- 经验 ${i + 1}/${experiences.size} ---")
+                val pkg = e.file.targetAppPackage ?: "?"
+                val label = e.file.targetAppLabel?.let { " ($it)" } ?: ""
+                appendLine("【目标】${e.file.userGoal}")
+                appendLine("【App】${pkg}${label}")
+                appendLine("【结果】${e.file.outcome} · ${e.file.outcomeLabel} · 共 ${e.file.steps.size} 步")
+                if (e.file.keyLearnings.isNotEmpty()) {
+                    appendLine("【关键路径】")
+                    e.file.keyLearnings.take(6).forEach { appendLine("  - $it") }
+                }
+                if (e.file.failureTrapsAvoided.isNotEmpty()) {
+                    appendLine("【已知陷阱】")
+                    e.file.failureTrapsAvoided.take(6).forEach { appendLine("  - $it") }
+                }
+                if (!e.file.outcomeDetail.isNullOrBlank()) {
+                    appendLine("【会话总结】${e.file.outcomeDetail.take(140)}")
+                }
+            }
+            appendLine("注意：经验里的 viewId / text / contentDesc 可能已经过时；优先以当前 snapshot 为准。")
+        }.trimEnd()
         return """
 你是 Android 自动化应用「AutoTask」内嵌的 UI agent。每次给你「用户目标 + 会话规划 + 过去步骤 + 当前屏幕快照」，
 你必须按 **ReAct 三段（Observation → Reflection → Action）** 严格输出 JSON。
@@ -313,7 +348,7 @@ $userGoal
 ■ 用户目标 / 当前会话状态
 ═══════════════════════════════════════
 目标：$userGoal
-${if (stuckSection.isEmpty()) "" else "\n$stuckSection\n"}${if (blacklistSection.isEmpty()) "" else "\n$blacklistSection\n"}${if (failedSection.isEmpty()) "" else "\n$failedSection\n"}
+${if (experienceSection.isEmpty()) "" else "\n$experienceSection\n"}${if (stuckSection.isEmpty()) "" else "\n$stuckSection\n"}${if (blacklistSection.isEmpty()) "" else "\n$blacklistSection\n"}${if (failedSection.isEmpty()) "" else "\n$failedSection\n"}
 $planSection
 
 $historySection
@@ -527,29 +562,6 @@ plan_status 含义：on_track（按规划） / adjusted（小调整） / off_tra
         return if (start >= 0 && end >= start) text.substring(start, end + 1) else text
     }
 
-    /**
-     * 调试用：能把 history 序列化成给人看的字符串，但目前 [buildHistorySection] 已经够用，
-     * 这个保留作为后续扩展接口（例如把整段 history 用 JSON 灌给 prompt）。
-     */
-    @Suppress("unused")
-    fun encodeHistoryForDebug(history: List<AiAgentStepRecord>): String {
-        return AiJson.encodeToString(history.map {
-            AgentHistoryDebugDto(
-                index = it.index,
-                actionType = it.action::class.simpleName.orEmpty(),
-                ok = it.result.ok,
-                message = it.result.message
-            )
-        })
-    }
-
-    @Serializable
-    private data class AgentHistoryDebugDto(
-        val index: Int,
-        val actionType: String,
-        val ok: Boolean,
-        val message: String?
-    )
 }
 
 @Serializable

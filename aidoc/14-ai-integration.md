@@ -220,7 +220,7 @@ AI 的能力扩大后，必须有用户可理解的授权模型：
 
 **2026-05-09 增量里程碑**（详见 `16-ai-inspector-capability.md` §13.7）：
 
-- **公共能力抽取 `task/inspector/shared/`**：`UiTreeQuery` / `NodeCriteriaExtractor` / `NodeToActionAssembler` / `AiUiTargetExtractor` 四个文件，让 inspector + agent 共享同一份"节点 → Applet / 节点 → AiUiTarget"逻辑，为 follow-up 2.1（agent 跑完保存为任务）打地基。
+- **公共能力抽取 `task/inspector/shared/`**：`UiTreeQuery` / `NodeCriteriaExtractor` / `NodeToActionAssembler` / `AiUiTargetExtractor` 四个文件，让 inspector + agent 共享同一份"节点 → Applet / 节点 → AiUiTarget"逻辑。`NodeToActionAssembler` 也被 `ExperienceToTaskConverter` 复用——把经验本里成功会话的 step 序列翻成可编辑 XTask 草稿（见 `aidoc/13-todo.md` 2.1 与 `aidoc/20-experience-book-design.md`）。
 - **决策面板 `ai/agent/overlay/`**：每步 agent action 在执行前通过悬浮窗征询用户**同意 / 拒绝 / 换一个**，倒计时默认同意；用户介入写入 history 喂给下一轮 AI 做自我学习。
 - 用户可见的边界从"任务级一次性授权"加强为"每步可干预 + 任务级授权"，AI 自由度未变（默认 3 秒倒计时同意），但风险从"开闸放水"降到"协作闯关"。
 

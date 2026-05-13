@@ -22,6 +22,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import top.xjunz.tasker.R
+import top.xjunz.tasker.ai.agent.experience.AiAgentExperienceBook
 import top.xjunz.tasker.ai.draft.AiConvertedStepStatus
 import top.xjunz.tasker.ai.draft.AiTaskDraftConversionResult
 import top.xjunz.tasker.ai.draft.AiTaskDraftConverter
@@ -35,6 +36,7 @@ import top.xjunz.tasker.ui.main.MainViewModel.Companion.peekMainViewModel
 import top.xjunz.tasker.ui.main.ScrollTarget
 import top.xjunz.tasker.ui.task.editor.FlowEditorDialog
 import top.xjunz.tasker.ui.task.showcase.TaskShowcaseViewModel
+import top.xjunz.tasker.ui.voice.experience.AiExperienceBookDialog
 import top.xjunz.tasker.util.ClickListenerUtil.setNoDoubleClickListener
 import top.xjunz.tasker.util.formatTime
 import top.xjunz.tasker.voice.AgentRequestPayload
@@ -81,6 +83,9 @@ class VoiceCommandFragment : BaseFragment<FragmentVoiceCommandBinding>(), Scroll
         binding.btnSendTextCommand.setNoDoubleClickListener {
             submitTextCommand()
         }
+        binding.cardExperienceBook.setNoDoubleClickListener {
+            AiExperienceBookDialog().show(parentFragmentManager)
+        }
         binding.inputTextCommand.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
                 submitTextCommand()
@@ -98,7 +103,37 @@ class VoiceCommandFragment : BaseFragment<FragmentVoiceCommandBinding>(), Scroll
         }
         observe(VoiceCommandService.uiState) {
             renderState(it)
+            // 每次 service 状态变化（包括 session 结束写完经验本后）顺便刷一次卡片摘要
+            refreshExperienceUsage()
         }
+        refreshExperienceUsage()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshExperienceUsage()
+    }
+
+    private fun refreshExperienceUsage() {
+        if (!isAdded) return
+        val ctx = context ?: return
+        val count = AiAgentExperienceBook.queryAll(ctx).size
+        if (count == 0) {
+            binding.tvExperienceUsage.setText(R.string.ai_experience_book_card_usage_empty)
+        } else {
+            val bytes = AiAgentExperienceBook.usageBytes(ctx)
+            binding.tvExperienceUsage.text = getString(
+                R.string.format_ai_experience_book_card_usage,
+                count,
+                formatBytes(bytes)
+            )
+        }
+    }
+
+    private fun formatBytes(bytes: Long): String = when {
+        bytes < 1024 -> "${bytes}B"
+        bytes < 1024 * 1024 -> "${bytes / 1024}KB"
+        else -> "%.2fMB".format(bytes / 1024.0 / 1024.0)
     }
 
     override fun getScrollTarget(): View? {
@@ -330,8 +365,8 @@ class VoiceCommandFragment : BaseFragment<FragmentVoiceCommandBinding>(), Scroll
     }
 
     private fun VoiceCommandStatus.iconRes(isRunning: Boolean): Int {
-        return if (!isRunning) R.drawable.ic_mic_24px else when (this) {
-            VoiceCommandStatus.IDLE -> R.drawable.ic_mic_24px
+        return if (!isRunning) R.drawable.ic_baseline_auto_awesome_24 else when (this) {
+            VoiceCommandStatus.IDLE -> R.drawable.ic_baseline_auto_awesome_24
             VoiceCommandStatus.LISTENING -> R.drawable.ic_mic_24px
             VoiceCommandStatus.RECOGNIZING -> R.drawable.ic_baseline_auto_awesome_24
             VoiceCommandStatus.EXECUTING -> R.drawable.ic_baseline_send_24

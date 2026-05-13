@@ -38,6 +38,7 @@ import top.xjunz.tasker.ai.agent.AiAgentSessionOutcome
 import top.xjunz.tasker.ai.agent.AiAgentSessionPlan
 import top.xjunz.tasker.ai.agent.AiAgentStepRecord
 import top.xjunz.tasker.ai.agent.AiDraftStep
+import top.xjunz.tasker.ai.agent.experience.AiAgentExperienceBook
 import top.xjunz.tasker.ai.agent.AiTaskScope
 import top.xjunz.tasker.ai.agent.AiTaskScopeStore
 import top.xjunz.tasker.ai.agent.overlay.AiAgentOverlayController
@@ -66,8 +67,10 @@ import top.xjunz.tasker.service.serviceController
 import top.xjunz.tasker.task.runtime.ITaskCompletionCallback
 import top.xjunz.tasker.task.runtime.LocalTaskManager
 import top.xjunz.tasker.task.storage.TaskStorage
+import top.xjunz.tasker.ui.main.MainActivity
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 enum class VoiceCommandStatus {
     IDLE,
@@ -158,6 +161,16 @@ class VoiceCommandService : Service(), RecognitionListener {
         private const val MAX_RECORD_COUNT = 30
 
         /**
+         * AI agent 执行结果通知 channel：与前台常驻通知 [CHANNEL_ID] 区分开，IMPORTANCE_DEFAULT
+         * 让用户能即时感知（声音 + 横幅），点通知打开主页。每次任务跑完发一条独立通知，
+         * 通知 ID 在 [OUTCOME_NOTIFICATION_ID_BASE] 之上递增（mod 一定上限避免无限堆积）。
+         */
+        private const val OUTCOME_CHANNEL_ID = "ai_agent_outcome"
+        private const val OUTCOME_NOTIFICATION_ID_BASE = 0x611
+        private const val OUTCOME_NOTIFICATION_ID_RANGE = 100
+        private val outcomeNotificationCounter = AtomicInteger(0)
+
+        /**
          * Fragment 处理完草稿（保存或忽略）后调用，清空 [VoiceCommandUiState.pendingDraft]，
          * 防止下次回到语音页又重新弹出。
          */
@@ -217,6 +230,8 @@ class VoiceCommandService : Service(), RecognitionListener {
             detail = getString(R.string.voice_command_notification_text)
         )
         createNotificationChannel()
+        createAgentOutcomeNotificationChannel()
+        AiAgentExperienceBook.ensureInitialized(this)
         startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.voice_command_notification_text)))
     }
 
@@ -667,6 +682,24 @@ class VoiceCommandService : Service(), RecognitionListener {
             )
         )
 
+        // **跨 session 长期记忆**：开局召回最相关的历史经验，整段透传给 session → planner →
+        // 注入下一轮 prompt。recall 失败 / 关闭 / 第一次跑都返回空，session 不阻塞。
+        val recalledExperiences = AiAgentExperienceBook.recall(
+            context = this,
+            userGoal = text,
+            targetApps = targetApps
+        )
+        if (recalledExperiences.isNotEmpty()) {
+            appendRecord(
+                title = getString(R.string.voice_record_agent_experience_recalled),
+                detail = getString(
+                    R.string.format_voice_record_agent_experience_recalled,
+                    recalledExperiences.size
+                )
+            )
+        }
+        val sessionStartedAtMillis = System.currentTimeMillis()
+
         // 决策面板：每步在执行前征询用户同意 / 拒绝 / 换一个。
         // 没授 SYSTEM_ALERT_WINDOW / 用户在 Preferences 里关了模式，overlay 自动降级 noop。
         val overlay = AiAgentOverlayController(this)
@@ -679,17 +712,13 @@ class VoiceCommandService : Service(), RecognitionListener {
             callbacks = object : AiAgentSession.Callbacks {
                 override fun onStep(record: AiAgentStepRecord) {
                     appendStepRecord(record)
-                    // 节点高亮：让用户亲眼看到 AI 命中了哪个节点。
-                    record.result.matchedNodeSummary?.let {
-                        // matchedNodeSummary 不带 bounds；先实现最低成本的"显示发生了什么"，
-                        // bounds 高亮等下一轮把 AiAgentStepResult 加 bounds 字段后接通。
-                    }
                 }
 
                 override fun onComplete(outcome: AiAgentSessionOutcome) {
                     // 这里只做兜底，外层 run() 返回后会写一次完整结果
                 }
-            }
+            },
+            experiences = recalledExperiences
         )
         val outcome = runCatching { session.run() }.getOrElse {
             AiAgentSessionOutcome.AiError(
@@ -706,7 +735,69 @@ class VoiceCommandService : Service(), RecognitionListener {
         overlay.dismiss()
         updateUiState { it.copy(activeAgentSessionId = null) }
         appendOutcomeRecord(outcome, plan)
+        notifyAgentOutcome(outcome, plan, userGoal = text)
+        recordOutcomeToExperienceBook(
+            outcome = outcome,
+            plan = plan,
+            userGoal = text,
+            targetApps = targetApps,
+            sessionId = sessionId,
+            startedAtMillis = sessionStartedAtMillis
+        )
         return true
+    }
+
+    /**
+     * Session 结束后把这次会话的所有信息写入经验本，下一次类似任务可被召回供 AI 参考。
+     * 失败不影响主流程（catch 在 [AiAgentExperienceBook.recordSession] 内部）。
+     */
+    private fun recordOutcomeToExperienceBook(
+        outcome: AiAgentSessionOutcome,
+        plan: AiAgentSessionPlan?,
+        userGoal: String,
+        targetApps: Set<String>,
+        sessionId: String,
+        startedAtMillis: Long
+    ) {
+        val outcomeLabel = when (outcome) {
+            is AiAgentSessionOutcome.Completed -> getString(R.string.voice_record_agent_completed)
+            is AiAgentSessionOutcome.GivenUp -> getString(R.string.voice_record_agent_given_up)
+            is AiAgentSessionOutcome.LimitExceeded -> getString(R.string.voice_record_agent_limit)
+            is AiAgentSessionOutcome.OutOfScope -> getString(R.string.voice_record_agent_out_of_scope)
+            is AiAgentSessionOutcome.PermissionDenied -> getString(R.string.voice_record_agent_permission_denied)
+            is AiAgentSessionOutcome.AiError -> getString(R.string.voice_record_agent_ai_error)
+            is AiAgentSessionOutcome.Cancelled -> getString(R.string.voice_record_agent_cancelled)
+            is AiAgentSessionOutcome.ServiceNotConnected -> getString(R.string.voice_record_agent_service_not_connected)
+        }
+        val outcomeDetail = when (outcome) {
+            is AiAgentSessionOutcome.Completed -> outcome.summary
+            is AiAgentSessionOutcome.GivenUp -> outcome.reason
+            is AiAgentSessionOutcome.LimitExceeded -> outcome.reason
+            is AiAgentSessionOutcome.OutOfScope -> getString(
+                R.string.format_voice_record_agent_out_of_scope_detail, outcome.currentPackage
+            )
+            is AiAgentSessionOutcome.PermissionDenied -> getString(
+                R.string.format_voice_record_agent_permission_denied_detail,
+                outcome.capability.name
+            )
+            is AiAgentSessionOutcome.AiError -> outcome.reason
+            is AiAgentSessionOutcome.Cancelled -> getString(R.string.voice_record_agent_cancelled_detail)
+            is AiAgentSessionOutcome.ServiceNotConnected ->
+                getString(R.string.voice_record_agent_service_not_connected_detail)
+        }
+        AiAgentExperienceBook.recordSession(
+            context = this,
+            sessionId = sessionId,
+            userGoal = userGoal,
+            targetApps = targetApps,
+            plan = plan,
+            outcome = outcome,
+            outcomeLabel = outcomeLabel,
+            outcomeDetail = outcomeDetail,
+            history = outcome.history,
+            startedAtMillis = startedAtMillis,
+            finishedAtMillis = System.currentTimeMillis()
+        )
     }
 
     private fun appendStepRecord(record: AiAgentStepRecord) {
@@ -1382,6 +1473,105 @@ class VoiceCommandService : Service(), RecognitionListener {
             )
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
+    }
+
+    private fun createAgentOutcomeNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                OUTCOME_CHANNEL_ID,
+                getString(R.string.ai_agent_outcome_channel_name),
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = getString(R.string.ai_agent_outcome_channel_desc)
+            }
+            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        }
+    }
+
+    /**
+     * Agent 一次会话结束后发条独立通知告知用户：成功/失败、跑了多少步、AI 给的总结。
+     * 跟前台常驻通知（[CHANNEL_ID]）完全独立，不会覆盖、不影响监听状态显示。
+     *
+     * 通知 ID 在 [OUTCOME_NOTIFICATION_ID_BASE, OUTCOME_NOTIFICATION_ID_BASE + RANGE) 内循环，
+     * 既保证多条通知不互相覆盖（用户能往上翻历史），又不会无限堆积占满系统抽屉。
+     */
+    private fun notifyAgentOutcome(
+        outcome: AiAgentSessionOutcome,
+        plan: AiAgentSessionPlan?,
+        userGoal: String
+    ) {
+        val (titleRes, isSuccess) = when (outcome) {
+            is AiAgentSessionOutcome.Completed ->
+                R.string.voice_record_agent_completed to true
+            is AiAgentSessionOutcome.GivenUp ->
+                R.string.voice_record_agent_given_up to false
+            is AiAgentSessionOutcome.LimitExceeded ->
+                R.string.voice_record_agent_limit to false
+            is AiAgentSessionOutcome.OutOfScope ->
+                R.string.voice_record_agent_out_of_scope to false
+            is AiAgentSessionOutcome.PermissionDenied ->
+                R.string.voice_record_agent_permission_denied to false
+            is AiAgentSessionOutcome.AiError ->
+                R.string.voice_record_agent_ai_error to false
+            is AiAgentSessionOutcome.Cancelled ->
+                R.string.voice_record_agent_cancelled to false
+            is AiAgentSessionOutcome.ServiceNotConnected ->
+                R.string.voice_record_agent_service_not_connected to false
+        }
+        val baseDetail = when (outcome) {
+            is AiAgentSessionOutcome.Completed -> outcome.summary
+            is AiAgentSessionOutcome.GivenUp -> outcome.reason
+            is AiAgentSessionOutcome.LimitExceeded -> outcome.reason
+            is AiAgentSessionOutcome.OutOfScope -> getString(
+                R.string.format_voice_record_agent_out_of_scope_detail, outcome.currentPackage
+            )
+            is AiAgentSessionOutcome.PermissionDenied -> getString(
+                R.string.format_voice_record_agent_permission_denied_detail,
+                outcome.capability.name
+            )
+            is AiAgentSessionOutcome.AiError -> outcome.reason
+            is AiAgentSessionOutcome.Cancelled -> getString(R.string.voice_record_agent_cancelled_detail)
+            is AiAgentSessionOutcome.ServiceNotConnected ->
+                getString(R.string.voice_record_agent_service_not_connected_detail)
+        }
+        val statsLine = buildPlanStatsLine(outcome.history, plan)
+        val title = getString(titleRes)
+        val text = getString(
+            R.string.format_ai_agent_outcome_notification_text,
+            userGoal.take(40),
+            baseDetail.take(80)
+        )
+        val bigText = buildString {
+            append("目标：")
+            append(userGoal)
+            append('\n')
+            append(baseDetail)
+            if (statsLine.isNotEmpty()) {
+                append('\n')
+                append(statsLine)
+            }
+        }
+        val openAppIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val iconRes = if (isSuccess) R.drawable.ic_check_circle_24px else R.drawable.ic_cancel_24px
+        val notification = NotificationCompat.Builder(this, OUTCOME_CHANNEL_ID)
+            .setSmallIcon(iconRes)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setAutoCancel(true)
+            .setContentIntent(openAppIntent)
+            .build()
+        val id = OUTCOME_NOTIFICATION_ID_BASE +
+                (outcomeNotificationCounter.getAndIncrement() % OUTCOME_NOTIFICATION_ID_RANGE)
+        getSystemService(NotificationManager::class.java).notify(id, notification)
     }
 
     private fun createSpeechRecognizerIfAvailable(): SpeechRecognizer? {
