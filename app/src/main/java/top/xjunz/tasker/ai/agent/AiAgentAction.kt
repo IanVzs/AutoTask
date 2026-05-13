@@ -282,9 +282,14 @@ data class AiAgentStepResult(
 )
 
 /**
- * 进入 [AiAgentSession] 历史的一条记录。在 session 内做"喂回 prompt 给下一轮 AI 看"
- * 与"语音页 records 卡片实时审计"两件事。**不**用于事后转 XTask 草稿——
- * agent 任务独立运行，跑完即丢。
+ * 进入 [AiAgentSession] 历史的一条记录。在 session 内做三件事：
+ * 1. 喂回 prompt 给下一轮 AI 看
+ * 2. 语音页 records 卡片实时审计
+ * 3. session 跑完后由经验本（[top.xjunz.tasker.ai.agent.experience.AiAgentExperienceBook]）
+ *    序列化为 [top.xjunz.tasker.ai.agent.experience.ExperienceStep] 落盘；成功经验在用户
+ *    主动点击 UI 时还会被翻译成可编辑 XTask 草稿弹 FlowEditor
+ *
+ * Agent 运行期本身**不**自动把 history 落成任何持久化任务——上面 #3 的草稿转换是用户主动行为。
  *
  * [userIntervention] 记录"本步用户在决策面板做了什么"。null = 未走决策面板（被禁用 / overlay 不可用 /
  * 此 action 类型不需要确认）。AI 在下一轮会通过 prompt 看到这个标记，进行自我学习。

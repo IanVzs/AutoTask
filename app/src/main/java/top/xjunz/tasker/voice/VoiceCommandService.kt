@@ -38,6 +38,7 @@ import top.xjunz.tasker.ai.agent.AiAgentSessionOutcome
 import top.xjunz.tasker.ai.agent.AiAgentSessionPlan
 import top.xjunz.tasker.ai.agent.AiAgentStepRecord
 import top.xjunz.tasker.ai.agent.AiDraftStep
+import top.xjunz.tasker.ai.agent.experience.AiAgentExperienceBook
 import top.xjunz.tasker.ai.agent.AiTaskScope
 import top.xjunz.tasker.ai.agent.AiTaskScopeStore
 import top.xjunz.tasker.ai.agent.overlay.AiAgentOverlayController
@@ -230,6 +231,7 @@ class VoiceCommandService : Service(), RecognitionListener {
         )
         createNotificationChannel()
         createAgentOutcomeNotificationChannel()
+        AiAgentExperienceBook.ensureInitialized(this)
         startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.voice_command_notification_text)))
     }
 
@@ -680,6 +682,24 @@ class VoiceCommandService : Service(), RecognitionListener {
             )
         )
 
+        // **跨 session 长期记忆**：开局召回最相关的历史经验，整段透传给 session → planner →
+        // 注入下一轮 prompt。recall 失败 / 关闭 / 第一次跑都返回空，session 不阻塞。
+        val recalledExperiences = AiAgentExperienceBook.recall(
+            context = this,
+            userGoal = text,
+            targetApps = targetApps
+        )
+        if (recalledExperiences.isNotEmpty()) {
+            appendRecord(
+                title = getString(R.string.voice_record_agent_experience_recalled),
+                detail = getString(
+                    R.string.format_voice_record_agent_experience_recalled,
+                    recalledExperiences.size
+                )
+            )
+        }
+        val sessionStartedAtMillis = System.currentTimeMillis()
+
         // 决策面板：每步在执行前征询用户同意 / 拒绝 / 换一个。
         // 没授 SYSTEM_ALERT_WINDOW / 用户在 Preferences 里关了模式，overlay 自动降级 noop。
         val overlay = AiAgentOverlayController(this)
@@ -697,7 +717,8 @@ class VoiceCommandService : Service(), RecognitionListener {
                 override fun onComplete(outcome: AiAgentSessionOutcome) {
                     // 这里只做兜底，外层 run() 返回后会写一次完整结果
                 }
-            }
+            },
+            experiences = recalledExperiences
         )
         val outcome = runCatching { session.run() }.getOrElse {
             AiAgentSessionOutcome.AiError(
@@ -715,7 +736,68 @@ class VoiceCommandService : Service(), RecognitionListener {
         updateUiState { it.copy(activeAgentSessionId = null) }
         appendOutcomeRecord(outcome, plan)
         notifyAgentOutcome(outcome, plan, userGoal = text)
+        recordOutcomeToExperienceBook(
+            outcome = outcome,
+            plan = plan,
+            userGoal = text,
+            targetApps = targetApps,
+            sessionId = sessionId,
+            startedAtMillis = sessionStartedAtMillis
+        )
         return true
+    }
+
+    /**
+     * Session 结束后把这次会话的所有信息写入经验本，下一次类似任务可被召回供 AI 参考。
+     * 失败不影响主流程（catch 在 [AiAgentExperienceBook.recordSession] 内部）。
+     */
+    private fun recordOutcomeToExperienceBook(
+        outcome: AiAgentSessionOutcome,
+        plan: AiAgentSessionPlan?,
+        userGoal: String,
+        targetApps: Set<String>,
+        sessionId: String,
+        startedAtMillis: Long
+    ) {
+        val outcomeLabel = when (outcome) {
+            is AiAgentSessionOutcome.Completed -> getString(R.string.voice_record_agent_completed)
+            is AiAgentSessionOutcome.GivenUp -> getString(R.string.voice_record_agent_given_up)
+            is AiAgentSessionOutcome.LimitExceeded -> getString(R.string.voice_record_agent_limit)
+            is AiAgentSessionOutcome.OutOfScope -> getString(R.string.voice_record_agent_out_of_scope)
+            is AiAgentSessionOutcome.PermissionDenied -> getString(R.string.voice_record_agent_permission_denied)
+            is AiAgentSessionOutcome.AiError -> getString(R.string.voice_record_agent_ai_error)
+            is AiAgentSessionOutcome.Cancelled -> getString(R.string.voice_record_agent_cancelled)
+            is AiAgentSessionOutcome.ServiceNotConnected -> getString(R.string.voice_record_agent_service_not_connected)
+        }
+        val outcomeDetail = when (outcome) {
+            is AiAgentSessionOutcome.Completed -> outcome.summary
+            is AiAgentSessionOutcome.GivenUp -> outcome.reason
+            is AiAgentSessionOutcome.LimitExceeded -> outcome.reason
+            is AiAgentSessionOutcome.OutOfScope -> getString(
+                R.string.format_voice_record_agent_out_of_scope_detail, outcome.currentPackage
+            )
+            is AiAgentSessionOutcome.PermissionDenied -> getString(
+                R.string.format_voice_record_agent_permission_denied_detail,
+                outcome.capability.name
+            )
+            is AiAgentSessionOutcome.AiError -> outcome.reason
+            is AiAgentSessionOutcome.Cancelled -> getString(R.string.voice_record_agent_cancelled_detail)
+            is AiAgentSessionOutcome.ServiceNotConnected ->
+                getString(R.string.voice_record_agent_service_not_connected_detail)
+        }
+        AiAgentExperienceBook.recordSession(
+            context = this,
+            sessionId = sessionId,
+            userGoal = userGoal,
+            targetApps = targetApps,
+            plan = plan,
+            outcome = outcome,
+            outcomeLabel = outcomeLabel,
+            outcomeDetail = outcomeDetail,
+            history = outcome.history,
+            startedAtMillis = startedAtMillis,
+            finishedAtMillis = System.currentTimeMillis()
+        )
     }
 
     private fun appendStepRecord(record: AiAgentStepRecord) {
