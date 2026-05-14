@@ -237,11 +237,16 @@ task 跑到执行端 `containsUiObject.findFirst` 用 `viewId AND textEquals AND
 
 | 方案 | 内容 | 优 | 缺 |
 |---|---|---|---|
-| **A (推荐，2026-05-13 决策)** | 跳过 task 二次匹配，dispatcher 用 inspector 的 `UiObjectActionRegistry.click` 同款 fallback 逻辑直接对 X 调 `performAction` / `wrapUiObject.click()` | 最 KISS，3 个 bug 一次根治；与"agent 独立运行 / 跑完即丢"定位一致 | 不走 task pipeline——AI agent 只能**当场**执行 |
-| ~~A.1~~ | A + 同时把执行步骤生成 task 草稿写进 step record → 用户点"保存为任务"时合并草稿弹给用户在 task editor 里手工调整 | 实时 work + 草稿可保存 | **已废弃**：agent 改为独立运行、不再生成草稿（见 `aidoc/13-todo.md` 2.1） |
-| ~~D~~ | 新增 `DynamicUiObjectFinder` applet，task 里存"基础条件 + 选择策略"，每次重跑时按策略动态定位 | 实时 work + 真持久化 + 用户可调策略 | **已弃置**：同上，agent 不再追求重跑能力 |
+| **A (推荐，2026-05-13 决策)** | 跳过 task 二次匹配，dispatcher 用 inspector 的 `UiObjectActionRegistry.click` 同款 fallback 逻辑直接对 X 调 `performAction` / `wrapUiObject.click()` | 最 KISS，3 个 bug 一次根治；agent 执行模块只关心当场执行 | 不走 task pipeline；草稿能力交给独立的经验本→草稿模块 |
+| ~~A.1~~ | A + 同时把执行步骤生成 task 草稿写进 step record → 用户点"保存为任务"时合并草稿弹给用户在 task editor 里手工调整 | 实时 work + 草稿可保存 | **已废弃**：草稿能力被解耦到独立的"经验本→草稿"模块（见下方架构说明 + `aidoc/13-todo.md` 2.1） |
+| ~~D~~ | 新增 `DynamicUiObjectFinder` applet，task 里存"基础条件 + 选择策略"，每次重跑时按策略动态定位 | 实时 work + 真持久化 + 用户可调策略 | **已弃置**：方向被「经验本→草稿」替代 |
 
-执行心得通过"经验本"沉淀让 AI 越来越聪明（见 `aidoc/20-experience-book-design.md`），不再依赖"保存为任务"路径。
+**最终架构（2026-05-13）：agent / 经验本 / 草稿生成 三模块解耦，单向数据流**
+- **agent 执行模块**（`AiAgentSession`）：负责 ReAct loop + UI 操作；每步 action / observation / reflection / result **自动**沉淀到经验本。
+- **经验本**（`AiAgentExperienceBook`）：纯数据层；提供 `recall()` 回喂 prompt、`queryAll/loadEntry` 给 UI、`convertToDraft()` 给草稿入口。
+- **草稿生成**（`ExperienceToTaskConverter`）：纯工具类，只读某条经验，把 step 序列翻译成 XTask 弹 FlowEditor；**完全由用户在经验本对话框主动点击触发**，agent 不感知。
+
+关键：agent 不知道也不关心"草稿"；草稿生成不知道也不关心 agent；这**不是**"自动落库"开关，是**模块边界**。详见 `aidoc/20-experience-book-design.md`。
 
 **修复诊断 message**：不论选哪个方案，`AgentActionDispatcher.dispatch` 的 wrapped callback 那段 message 必须改——不能再把 task 失败死消息写成"命中了但 perform 没生效，可能 RN 不响应"。改成更准的：「task 二次匹配未命中节点（target 字段在执行端 root 上找不到匹配），可能是节点 text 变化或字段范围太宽」。
 

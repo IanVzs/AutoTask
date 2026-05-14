@@ -795,8 +795,15 @@ private fun AiAgentAction.requiredCapability(): top.xjunz.tasker.ai.model.AiCapa
 }
 
 /**
- * Session 的最终结果。所有分支都带 history 仅用于 outcome 详情展示（语音页 records 卡片）
- * 和结果通知正文拼装；agent 任务独立运行、跑完即丢，**不**用于反向生成可保存的 XTask 草稿。
+ * Session 的最终结果。所有分支都带 history，被以下三个**互不耦合**的下游消费：
+ *
+ * 1. 语音页 records 卡片实时审计（`VoiceCommandService.appendStepRecord` / `appendOutcomeRecord`）
+ * 2. 结果通知正文拼装（`VoiceCommandService.notifyAgentOutcome`，channel `ai_agent_outcome`）
+ * 3. **自动**沉淀到经验本（`AiAgentExperienceBook.recordSession`，agent 自身不感知此后续）
+ *
+ * Session 自身**不**直接产出可保存 XTask；草稿生成是**完全独立**的模块
+ * （`ExperienceToTaskConverter`），只读经验本、由用户在 UI 主动触发，agent 既不调用也不依赖。
+ * 详见 `aidoc/20-experience-book-design.md` §0 三模块解耦架构。
  */
 sealed class AiAgentSessionOutcome {
     abstract val history: List<AiAgentStepRecord>

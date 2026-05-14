@@ -36,7 +36,7 @@
 13. AI 接入设计草案：`14-ai-integration.md`。
 14. AI 接入工作纪要：`15-ai-working-notes.md`。
 15. AI 屏幕感知与 Inspector 接入（第二阶段核心能力）：`16-ai-inspector-capability.md`。
-16. AI agent 经验本（跨 session 长期记忆）设计：`20-experience-book-design.md`（暂未实现，仅设计）。
+16. AI agent 经验本（跨 session 长期记忆）+ 经验→草稿生成：`20-experience-book-design.md`（**已实现**，2026-05-13）。
 
 ## 文件索引
 
@@ -61,7 +61,7 @@
 | [`17-inspector-vs-agent-pathway-audit.md`](17-inspector-vs-agent-pathway-audit.md) | inspector 与 agent 执行路径对照审计 |
 | [`18-ai-agent-thinking-upgrade.md`](18-ai-agent-thinking-upgrade.md) | agent ReAct 三段思考升级与 stuck detection / 失败策略记忆设计 |
 | [`19-feature-audit.md`](19-feature-audit.md) | agent 功能现状与已发现 bug 的根因 / 方案审计 |
-| [`20-experience-book-design.md`](20-experience-book-design.md) | **agent 经验本（跨 session 长期记忆）设计**（未实现，仅设计） |
+| [`20-experience-book-design.md`](20-experience-book-design.md) | **agent 经验本**（跨 session 长期记忆）+ **经验本→草稿生成**（解耦三模块：agent 执行 / 经验本沉淀 / 草稿翻译，**已实现** 2026-05-13） |
 
 ## 重要约定
 

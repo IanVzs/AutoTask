@@ -132,7 +132,49 @@ AI 功能先作为现有任务系统的上层协作者，不直接绕过 `XTask`
 5. 涉及执行、保存、危险动作或上传敏感上下文时，必须让用户确认。
 6. 更新 `14-ai-integration.md`，并同步 `01-overview.md`、`02-architecture.md`、`07-ui-architecture.md`、`08-build-config-premium.md` 中受影响章节。
 
-## 9. 新增一个 UI 对话框（通用流程）
+## 10. RecyclerView Adapter 与列表数据引用陷阱（**必读**）
+
+项目里到处用 `inlineAdapter(data, itemBindingClass, init, bind)` 配 `by lazy { ... }` 缓存
+adapter 实例。这种写法有一个**易错的 Kotlin closure capture 陷阱**：
+
+```kotlin
+private var entries: List<X> = emptyList()                       // ← var
+private val adapter by lazy { inlineAdapter(entries, ...) }      // ← lazy 触发只 capture 一次
+fun refresh() { entries = newList; adapter.notifyDataSetChanged() }  // ❌ adapter 内部还是老 list
+```
+
+`inlineAdapter` 内部 `getItemCount() = data.size` / `data[i]` 都是按**传入瞬间的 data 引用** capture 的，
+后续 `entries = newList` 不会被 adapter 看到，UI 不刷新。
+
+**两种安全写法**：
+
+1. **list 引用稳定**（最常见 + 最便宜）：`data` 用 `mutableListOf()` 字段或 ViewModel 里的
+   `val list = mutableListOf<X>()`，外部只通过 `add` / `removeAt` / `clear + addAll` 修改内容，
+   引用始终不变，配 `notifyXxxChanged` 即可：
+   ```kotlin
+   private val items = mutableListOf<X>()
+   private val adapter by lazy { inlineAdapter(items, ...) }
+   fun refresh() { items.clear(); items.addAll(newItems); adapter.notifyDataSetChanged() }
+   ```
+
+2. **list 引用会变**（LiveData postValue 替换、外部 var 重新赋值）：**别 `by lazy`**，改成
+   `private fun buildAdapter() = inlineAdapter(currentList, ...)`，每次 list 引用变化时**重建** adapter：
+   ```kotlin
+   observe(viewModel.taskList) { binding.rv.adapter = buildAdapter() }
+   ```
+
+历史踩坑（**禁止再犯**）：
+
+- `app/src/main/java/top/xjunz/tasker/ui/voice/experience/AiExperienceBookDialog.kt`
+- `app/src/main/java/top/xjunz/tasker/ui/task/editor/TaskSnapshotSelectorDialog.kt`
+- `app/src/main/java/top/xjunz/tasker/ui/task/showcase/TaskListDialog.kt`
+
+三处都中过同一陷阱（症状：第一次打开 dialog 列表始终空 / setValue 后不刷新），现已统一改成方案 2。
+`app/src/main/java/top/xjunz/tasker/ui/base/InlineAdapter.kt` 顶部 KDoc 也写了同款说明。
+
+新增任何 `inlineAdapter` 调用方时**先确认 data 引用是否稳定**，再决定走方案 1 还是方案 2。
+
+## 11. 新增一个 UI 对话框（通用流程）
 
 1. 新建 `ui/.../XxDialog.kt`：
    ```kotlin
@@ -145,14 +187,16 @@ AI 功能先作为现有任务系统的上层协作者，不直接绕过 `XTask`
 3. 如果需要和主流程通信：放到 `activityViewModels<MainViewModel>()` 或 `TaskShowcaseViewModel`
 4. 在调用处用 `show(childFragmentManager, tag)` 弹出
 5. 如果是**全屏**对话框，走 `DialogStackManager` 的退入场动画
+6. 列表型对话框务必先看 §10 的 `inlineAdapter` 陷阱说明。
 
-## 10. 添加一个新的测试 / 集成测试
+## 12. 添加一个新的测试 / 集成测试
 
-- 单元测试：`tasker-engine/src/test/java/**`（纯 JVM）
-- 仪器测试：`app/src/androidTest/java/**`（需要真机 / 模拟器）
-- 目前没有 CI 配置（仓库里没有 `.github/workflows`），请手动跑 `./gradlew :tasker-engine:test`
+- 单元测试：`tasker-engine/src/test/java/**`（纯 JVM）；`app/src/test/java/**` 也有少量测试（如 `AiActionGateTest.kt`）。
+- 仪器测试：`app/src/androidTest/java/**`（需要真机 / 模拟器）。
+- CI 已就位：`.github/workflows/android-ci.yml`；本地手动跑 `./gradlew :tasker-engine:test`。
+- `ai/agent/experience/` 下的纯算法（`ExperienceRecaller` 打分、`ExperienceKeywordExtractor` 抽词、`ExperienceRedactor` 脱敏正则、`ExperienceFileWriter.parseJsonBlock`）非常适合补 JVM 单测。
 
-## 11. 常见"一步到位"check list
+## 13. 常见"一步到位"check list
 
 | 场景 | 必改文件 |
 |------|----------|
@@ -165,7 +209,7 @@ AI 功能先作为现有任务系统的上层协作者，不直接绕过 `XTask`
 | 新 AIDL | `aidl/**` + 两端实现 + ProGuard 保留 |
 | 新 DTO 字段 | `XTaskDTO.kt` / `AppletDTO.kt`（需默认值） + `AppletFactoryUpdateHelper.kt` |
 
-## 12. 通用原则
+## 14. 通用原则
 
 - **永远写最小改动**：不要顺手重构，老任务文件会被破坏。
 - **任何 id / 序列化名 / string key 变化都要做向后兼容**。

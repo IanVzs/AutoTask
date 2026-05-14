@@ -154,6 +154,16 @@ make logs
 
 实现见 `app/src/main/java/top/xjunz/tasker/ai/agent/AiAgentLog.kt`。
 
+### 2.13 vivo / xiaomi / oppo 等 OEM 上 App 主进程 logcat 几乎全丢
+
+很多国产 ROM 默认对第三方 App 的主进程 logcat 做激进过滤，跑 `adb logcat` 只能看到 selinux 警告和 GC JIT 系统消息，业务日志几乎全无（有时连 `:service` 特权进程也丢）。**症状**：调试时 `make logs` / `adb logcat -s AutoTask:*` 几乎看不到任何东西；常规 task 失败也找不到 task pipeline 异常。
+
+替代方案：
+
+1. **AI agent 链路**：日志统一走 `top.xjunz.tasker.ai.agent.AiAgentLog`，**同时**写文件镜像 `/sdcard/Android/data/top.xjunz.tasker/files/agent.log`，OEM 不会过滤这个文件。`adb pull` 取走即可（无需 root）。文件 4MB 上限，超出截头保尾。
+2. **常规 task 链路**：每次任务跑一次生成一份 `TaskSnapshot` 挂在 `XTask.snapshots` 内存 deque（最多 10 份），App 进程不杀就还在。从主页 task 列表点对应任务行的"快照"图标按钮 → 弹出 `TaskSnapshotSelectorDialog` 选最近一次失败的快照 → 进 `FlowEditorDialog` 轨迹模式（红/绿标色，红色 = 失败 applet），点失败 applet 弹 `SnapshotLogDialog` 看 actual 值 + 异常堆栈。
+3. 实在要看 logcat：换台没做主进程过滤的设备（Pixel / 小米开发者版等），或在系统设置开发者选项里翻"日志缓冲区"相关设置。
+
 ### 2.12 横屏 / 主题切换时 App 直接崩，堆栈最末是 `binder haven't been received`
 
 **现象**
