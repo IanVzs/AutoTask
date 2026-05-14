@@ -110,10 +110,9 @@ aidoc 索引见 [`aidoc/README.md`](aidoc/README.md)。
 
 ## 截图
 
-| <img src="/app/screenshots/Screenshot_light_1.png" alt="pic_main" style="zoom:25%;" /> | <img src="/app/screenshots/Screenshot_light_2.png" alt="pic_test" style="zoom:25%;" /> | <img src="/app/screenshots/Screenshot_night_1.png" style="zoom:25%;" /> | <img src="/app/screenshots/Screenshot_night_2.png" style="zoom:25%;" /> |
-|----------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------|-------------------------------------------------------------------------|-------------------------------------------------------------------------|
-
-> AI Agent / 「人工智能」Tab / 经验本卡片 / 转草稿 等新功能截图待补。
+| 「人工智能」页 + AI 经验本入口卡 | AI Provider 设置（DeepSeek 等 OpenAI 兼容） | 任务列表（亮） | 任务编辑器 / Inspector（暗） |
+|---|---|---|---|
+| <img src="/app/screenshots/aipage.jpg" alt="人工智能页 + AI 经验本卡片" style="zoom:25%;" /> | <img src="/app/screenshots/aisetting.jpg" alt="AI Provider 设置" style="zoom:25%;" /> | <img src="/app/screenshots/Screenshot_light_1.png" alt="任务列表" style="zoom:25%;" /> | <img src="/app/screenshots/Screenshot_night_1.png" alt="任务编辑器 暗色" style="zoom:25%;" /> |
 
 ---
 
@@ -197,4 +196,4 @@ keyPassword=xxx
 
 *Original work Copyright 2023 xjunz*
 
-*Modifications Copyright 2026 IanVzs*
+*Modifications Copyright 2026 IanVzs and Contributors*
