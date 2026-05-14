@@ -1,5 +1,26 @@
 # 12 · 发版说明
 
+## 2.2.0 / versionCode 220 · AI 接入第二阶段完整发布
+
+发布日期：2026-05-14（tag `v2.2.0`）。
+
+### 阶段定位
+
+`2.1.0-alpha.1` 之后约一周内 AI agent loop / 经验本 / 一键转草稿 / 结果通知 /
+「人工智能」Tab / inlineAdapter 陷阱修复 / 经验本 P1 漏洞修复（隐私 / 主线程 IO /
+索引一致性 / prompt 长度截断）等大批改动累积合入 master，AI 体系功能完整、
+真机实跑验证可用，作为新的 minor 版本 **2.2.0** 直接发版（跳过 beta，因为
+alpha.1 之后所有变更都已经过手动测试）。
+
+aidoc/README.md / aidoc/01-overview.md / aidoc/02-architecture.md / aidoc/05 / 06 /
+07 / 09 / 10 / 11 / 12 / 13 / 14 / 15 / 16 / 19 / 20 同时进行了系统性 sync，
+让 doc 与代码一致；根目录 README.md 重写为「自动任务 + AI Agent」双主线，把 AI 体系
+作为头号 selling point 并补 AI 截图（aipage.jpg + aisetting.jpg）。
+
+变更详情：
+
+- 见下方「2.1.0-alpha.1 起」累积时间线全文，2.2.0 是这条时间线的收口。
+
 ## 2.1.0-alpha.1 / versionCode 210 起 · AI 接入第二阶段（持续累积）
 
 发布日期：2026-05-09 起持续；版本号见 `gradle.properties` `APP_VERSION_NAME` / `APP_VERSION_CODE`。
