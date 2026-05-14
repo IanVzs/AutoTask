@@ -181,9 +181,7 @@ keyPassword=xxx
 
 多台设备同时连接时，`make install`、`make run` 等 adb 命令可以通过 `DEVICE=<adb 序列号>` 指定设备。
 
-### vivo / xiaomi / oppo 等 OEM 上 logcat 几乎全丢
-
-很多国产 ROM 默认对第三方 App 主进程的 logcat 做激进过滤，跑 `make logs` 几乎看不到任何业务日志。AI Agent 链路因此**同时**写一份文件镜像到 `/sdcard/Android/data/top.xjunz.tasker/files/agent.log`（OEM 不会过滤），可直接 `adb pull` 取走。常规 task 链路则用主页 task 列表的"快照"按钮查 `TaskSnapshot` 轨迹模式（红/绿标色 + 失败 applet 日志）。详见 [`aidoc/10-troubleshooting.md`](aidoc/10-troubleshooting.md) §2.13。
+排障入口（包括 OEM 上 logcat 丢失等已知坑点）见 [`aidoc/10-troubleshooting.md`](aidoc/10-troubleshooting.md)。
 
 ---
 
