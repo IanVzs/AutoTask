@@ -4,16 +4,42 @@
 > 本文档既是设计稿也是当前实现的事实文档；后续修改 `ai/agent/experience/` 目录或经验本相关
 > UI / prompt 注入逻辑时，必须同步本文。
 
-## 0. 跟之前决策的衔接
+## 0. 架构定位（核心：三模块解耦，单向数据流）
 
 `13-todo.md` 早期把 follow-up 2.1（agent 跑过的步骤"另存为任务"）标为"agent 改为独立运行 →
-不再保存为任务"。**用户在 2026-05-13 18:48 重新决策**：
-- agent 仍然**独立运行**（不会自动把每步落成 XTask 进任务库）
-- 但需要**经验本**沉淀执行心得给下次 AI 参考
-- 而且**成功的经验**支持用户**主动一键转草稿**，进 FlowEditor 继续打磨
+不再保存为任务"。**用户在 2026-05-13 重新决策**后，最终方案不是"开/关"的二元选择，
+而是**三个模块通过经验本作为单向数据中介解耦**：
 
-因此本设计文档（原本规划的 V1 设计）整体落地，并扩展了原本不在 MVP 范围的"成功经验 → 草稿"
-能力。原 13-todo 2.1 改名重启，作为"经验本驱动的可选转换路径"存在。
+```
+┌──────────────────────┐     ┌────────────────────┐     ┌──────────────────────────┐
+│ agent 执行模块        │     │ 经验本              │     │ 草稿生成模块              │
+│ AiAgentSession       │ →   │ AiAgentExperienceBook │  ←  │ ExperienceToTaskConverter │
+│ ReAct loop + 执行    │ 自动 │ 纯数据层 (txt+JSON)  │ 用户 │ step 序列 → XTask → Editor │
+└──────────────────────┘ 沉淀 └────────────────────┘ 触发 └──────────────────────────┘
+```
+
+**三模块各自的边界**：
+
+1. **agent 执行模块**（`AiAgentSession`）：负责 ReAct loop + UI 操作。每步 action / observation /
+   reflection / result **自动沉淀到经验本**（无开关概念；`Preferences.aiAgentExperienceBookEnabled=false`
+   仅关闭沉淀本身，agent 执行能力不受影响）。
+2. **经验本**（`AiAgentExperienceBook`）：纯数据层，跨 session 长期记忆。**三个出口**：
+   - `recall()` — 回喂下一次 `nextAction` 的 prompt（让下次 AI 看到以往经验）
+   - `queryAll()` / `loadEntry()` — 给 UI 浏览/详情用
+   - `convertToDraft()` — 给草稿入口
+3. **草稿生成模块**（`ExperienceToTaskConverter`）：纯工具类，只**读**某条经验记录里 `convertible=true`
+   的 step 序列，翻译成 `XTask` 弹 `FlowEditorDialog` 让用户审核。**完全由用户在经验本对话框主动
+   点击触发**，agent 不感知、不调用、不依赖这条路径。
+
+**关键属性**：
+- agent 不知道也不关心"草稿"
+- 草稿生成不知道也不关心 agent 此刻在做什么
+- 删除经验本里某条记录不影响 agent 跑、不影响已生成的草稿
+- 删除某条已生成的草稿不影响经验本里那条记录
+- 三者的耦合点**只有经验本的文件结构 + JSON schema**
+
+**这不是**"自动 vs 手动落库"的开关关系，是**模块边界**。早期文档里散在 5 处的"独立运行 / 跑完即丢 /
+不为草稿服务"措辞已统一更新为本节描述。
 
 ## 1. 动机
 
@@ -324,7 +350,7 @@ score = (pkg_match * 3 + keyword_overlap + outcome_failure_bonus) * age_decay
 
 - `aidoc/13-todo.md` 2.1：决策反转的承接者；本设计落地后 13-todo 同步标 2.1 重启完成
 - `aidoc/14-ai-integration.md`、`aidoc/15-ai-working-notes.md`、`aidoc/16-ai-inspector-capability.md`：
-  之前为"agent 独立运行 / 不再保存为任务"补的描述需要部分回滚为"经验本驱动"
+  早期为"agent 独立运行 / 不再保存为任务"补的二元描述已统一更新为"三模块解耦"
 - `aidoc/19-feature-audit.md` 中已废弃的 A.1 / D 方案在本设计落地后仍然废弃（路径不同）
 - 修改 `ai/agent/experience/`、`fragment_voice_command.xml`、`task_bottom_bar.xml`、
   Preferences 经验本 3 键、`AiAgentPlanner.buildNextActionPrompt` 的 experienceSection、

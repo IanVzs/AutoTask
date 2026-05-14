@@ -8,16 +8,17 @@
 
 ## 高优先级
 
-1. **AI 接入第一阶段 MVP**
+1. ~~**AI 接入第一阶段 MVP**~~ **（已完成，归档）**
    - 范围：`app/src/main/java/top/xjunz/tasker/ai/`、`voice/`、`ui/voice/`、`Preferences.kt`、`res/values/strings.xml`。
-   - 目标：建立 AI Provider 抽象和 OpenAI-compatible 配置，让语音识别文本进入 AI 意图理解，输出"执行现有任务 / 创建任务草稿 / 需要授权的行动计划 / 需要澄清 / 无法理解"等受控结果。
+   - ~~目标：建立 AI Provider 抽象和 OpenAI-compatible 配置...~~
+   - 完成度：AI Provider（OpenAI 兼容 HTTP）/ 意图理解（`VoiceAiInterpreter`）/ 草稿生成（`AiTaskDraftConverter`）/ 行动计划与门禁（`AiActionGate` / `AiCenter`）/ 决策记录（`AiDecisionRecord` / `AiAuditStore`）已全部落地；后续提升详见下方 follow-up 与高优 3-6 项。
 
 2. **AI 第二阶段：屏幕感知与可执行 UI 操作**（**已转向 agent loop 形态，2026-05-09 一次性落地**）
    - 范围（已落地）：`app/src/main/java/top/xjunz/tasker/ai/agent/` 新增 7 个文件（`AiUiSnapshot` / `ScreenSnapshotProvider` / `AiAgentAction` / `AiAgentExecutor` / `AiAgentPlanner` / `AiAgentSession` / `AiTaskScope`），`Preferences` 加 agent 三项配置，`VoiceCommandService.runAgentFlow`，`VoiceCommandFragment` 任务级授权对话框，`AboutFragment` AI 配置加 agent 开关。
    - 设计依据：`16-ai-inspector-capability.md` §13、`14-ai-integration.md` §7.1、`15-ai-working-notes.md` §12。
    - **已不再适用**的旧子任务：原本计划的 Phase 2.A 只读 → 2.B 可执行 → 2.C 写入兜底三段式被合并成一次性 agent loop 闭环，不再分批落地。
    - **后续 follow-up 子任务**（明天起按需推进）：
-     - **2.1 经验本驱动的「成功经验 → 任务草稿」（已实现，2026-05-13）**：用户决策两次反复，最终方案是 agent 仍**独立运行 + 通知汇报结果**（任务结束后弹 `ai_agent_outcome` 通知，每次跑完即丢，**不**自动落 XTask），但同时引入**经验本** (`ai/agent/experience/`) 沉淀每次执行心得（自然语言 markdown + 结构化 JSON 嵌块写到 `${filesDir}/ai_agent_experience/`），下一次类似任务开局会按 (用户 goal, 当前 App) 召回 top-N 注入 prompt 让 AI 越用越聪明；其中**成功经验**（outcome=Completed）支持用户在「人工智能」页 → 经验本对话框里**主动**点"转任务草稿"按钮，把多步 step 序列翻译成 RootFlow + Do + click/long_click/set_text/launch_app/global_back/home 序列后弹 `FlowEditorDialog` 让用户审核保存。详细设计与实现见 `aidoc/20-experience-book-design.md`。
+     - **2.1 agent / 经验本 / 草稿生成 三模块解耦（已实现，2026-05-13）**：最终架构 — agent 执行（`AiAgentSession`）每步**自动**沉淀到经验本；经验本（`AiAgentExperienceBook`）作纯数据层（自然语言 markdown + 结构化 JSON 嵌块写到 `${filesDir}/ai_agent_experience/`，索引 `index.json`），三个出口 — `recall()` 按 (用户 goal, 当前 App) 召回 top-N 回喂下一次 prompt、`queryAll/loadEntry` 给 UI、`convertToDraft()` 给草稿入口；草稿生成（`ExperienceToTaskConverter`）是**完全由用户在「人工智能」→ 经验本对话框主动点击**触发的独立工具类，把成功经验（outcome=Completed）里 `convertible` 的 step 序列翻译成 `RootFlow + preload + ifFlow + doFlow` 弹 `FlowEditorDialog`。三者通过经验本作为单向数据中介解耦，**不是"自动 vs 手动落库"的开关关系**。会话结果通过独立通知 channel `ai_agent_outcome` 告知用户。详见 `aidoc/20-experience-book-design.md`。
      - **2.2 包名校验与用户编辑**：`runAgentFlow` 拿到 `plan.targetAppPackage` 后用 `PackageManagerBridge.loadPackageInfo` 校验存在性；任务级授权对话框允许用户手改包名 / 加多个包。
      - **2.3 中止运行中 session 的 UI 入口**：在记录卡片或浮动 toast 里加"停止 agent"按钮，调用 `coroutineScope.cancel()` 或新增 `AiAgentSession.cancel()`。
      - **2.4 节点压缩 redact**：把 `viewId` 命中 password / cvv / bank / phone / id_card 等关键词的节点的 `text` 强制 `redacted=true`，不上传明文。

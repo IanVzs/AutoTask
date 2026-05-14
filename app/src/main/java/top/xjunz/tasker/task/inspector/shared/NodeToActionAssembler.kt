@@ -25,9 +25,12 @@ import top.xjunz.tasker.task.editor.AppletReferenceEditor
  *
  * **AI agent 运行期不通过本类**：agent 单步动作走 [AiAgentTaskAssembler.buildTaskFromRealNode]
  * 自己 wrap（因为它跑在 :service 特权进程，本类用到的 `.str` 扩展会取 `App.instance` 崩）。
- * Agent 任务跑完即丢、不会自动落 XTask；但**经验本**
- * ([top.xjunz.tasker.ai.agent.experience.ExperienceToTaskConverter]) 在用户主动点击
- * "成功经验 → 任务草稿"时复用本类，把多步 step 序列翻译成可编辑 XTask 弹 FlowEditor。
+ *
+ * 但**经验本→草稿生成模块** ([top.xjunz.tasker.ai.agent.experience.ExperienceToTaskConverter])
+ * 复用本类：用户在 UI 主动点击"经验→任务草稿"时，从经验本读出 step 序列，每步通过本类
+ * 包成 `containsUiObject` Flow，多步串成 doFlow 弹 FlowEditor 让用户审核。这跟 agent 自身完全解耦
+ * （agent 不感知、不调用），只通过经验本作为单向数据中介。详见
+ * `aidoc/20-experience-book-design.md` §0 三模块解耦架构。
  *
  * 不在这里做的事：
  * - 不操作 [top.xjunz.tasker.engine.task.XTask] / RootFlow / Do 这些任务级容器

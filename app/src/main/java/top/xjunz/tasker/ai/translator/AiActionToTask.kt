@@ -31,7 +31,10 @@ import java.util.concurrent.atomic.AtomicLong
  * **架构对照**（见 `aidoc/16-ai-inspector-capability.md` §13.8）：
  * - agent 的"动作执行"复用 AutoTask 现有的 Applet 管道，**不再**自己写 `performAction`。
  * - 跨进程问题、节点定位、a11y / Shizuku 双模式适配全部由现有 task 管道解决。
- * - 输出的 [XTask] 是**一次性**的，跑完即丢；agent 已经决定独立运行，不再为"保存为可重放任务"做沉淀。
+ * - 本类输出的 [XTask] 是**单步一次性**临时 task（仅给 agent 当场派发执行），跑完即丢；
+ *   "把多步会话保存为可编辑可重放任务"是**完全独立**的能力，由
+ *   [top.xjunz.tasker.ai.agent.experience.ExperienceToTaskConverter] 通过读取经验本实现，
+ *   跟本类无任何调用关系。详见 `aidoc/20-experience-book-design.md` §0 三模块解耦架构。
  *
  * 不支持的动作（[AiAgentAction.Done] / [GiveUp] / [Unknown] / [Wait] / [Scroll]）返回 null：
  * - Done / GiveUp / Unknown：session 终止，不应执行；

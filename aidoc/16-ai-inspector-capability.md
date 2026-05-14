@@ -400,16 +400,26 @@ Phase 2.A 只读快照 + Phase 2.B 可执行节点 + Phase 2.C 写入兜底，**
 - `AboutFragment` 的 AI 配置弹窗加 "启用 AI agent 模式" 复选框 + 解释段
 - 新增 25+ 条 strings 描述会话生命周期（planning / planned / denied / started / step / completed / given_up / limit / out_of_scope / permission_denied / ai_error / cancelled）
 
-### 13.4 边界设计（仅四条，不阻塞执行）
+### 13.4 边界设计（任务级授权 + 默认自动执行 + 每步可选用户介入）
 
-1. **任务级授权**：每个新会话弹一次对话框列出"目标 / App / 步数 / 时长 / 能力"，一键允许整段会话；session 内不再有任何打断。
+1. **任务级授权**：每个新会话弹一次对话框列出"目标 / App / 步数 / 时长 / 能力"，一键允许整段会话。
 2. **App scope 锁**：`AiAgentSession` 每步抓快照后检查当前包名是否在 `scope.targetApps` 内；切到非授权 App 立即停止并报告 `OutOfScope`。`launcher / systemui / android` 等过场包名豁免。
 3. **步数 / 时长上限**：默认 30 步 / 90 秒，到顶即停。
 4. **未授权能力即停**：每步执行前检查 `action.requiredCapability()` 是否在 `scope.capabilities` 内；不在则 `PermissionDenied`，不静默跳过。
 
+> **历史描述更新（2026-05-09 加 §13.7 决策面板后）**：早期本节写"session 内不再有任何打断"，
+> 后来 §13.7 引入了**每步决策面板**（悬浮窗征询用户同意 / 拒绝 / 换一个），默认 3 秒倒计时
+> 自动同意 — 等价于"任务级授权 + 默认自动执行，每步用户可选介入"。详见 §13.7。
+> 想完全无打断的用户可在 Preferences 把 `aiAgentConfirmMode` 改为 `disabled`。
+
 ### 13.5 已知 follow-up（不阻塞验证）
 
-- agent 任务定位为**独立运行、跑完即丢**，结束**不**自动生成可重放 XTask（2026-05-13）。改为：① 通过通知告知用户成功 / 失败结果；② 执行心得用"经验本" (`ai/agent/experience/`) 沉淀，下次同类任务开局召回注入 prompt；③ 成功经验（outcome=Completed）支持用户在 UI 主动点击"一键转任务草稿"，由 `ExperienceToTaskConverter` 翻成 XTask 弹 FlowEditor 让用户审核（见 `aidoc/20-experience-book-design.md`）。
+- **agent / 经验本 / 草稿生成 三模块解耦架构**（2026-05-13 落地）：
+  - **agent 执行模块**（`AiAgentSession`）：负责 ReAct loop + UI 操作。每步 action / observation / reflection / result **自动**沉淀到经验本（`ai/agent/experience/`，关闭 `aiAgentExperienceBookEnabled` 仅影响沉淀本身，agent 执行能力不变）。
+  - **经验本**（`AiAgentExperienceBook`）：纯数据层，跨 session 长期记忆。三个出口 — `recall()` 回喂 prompt 让下次 AI 看以往经验、`queryAll/loadEntry` 给 UI 浏览详情、`convertToDraft()` 给草稿入口。
+  - **草稿生成模块**（`ExperienceToTaskConverter`）：纯工具类，只读某条经验记录，把其中 `convertible` 的 step 序列翻译成 `XTask` 弹 `FlowEditor`。完全由用户在经验本对话框点击触发，agent 不感知、不调用、不依赖这条路径。
+  - 关键属性：agent 不知道也不关心"草稿"；草稿生成不知道也不关心 agent 此刻在做什么；删除经验本里某条记录不影响 agent 跑、不影响已生成的草稿；这**不是**"自动 vs 手动落库"的开关关系，是**模块边界**。
+  - 详见 `aidoc/20-experience-book-design.md`。会话结果还会通过独立通知 channel `ai_agent_outcome` 告知用户。
 - 节点压缩规则比较粗暴（`MAX_NODES = 80`、`MAX_TEXT_LEN = 80`），没做按 App 类别差异化；密码 / 银行卡 / CVV 等敏感字段也尚未做白名单 redact，仅依赖 `give_up` 行为指南让 AI 自己回避。
 - Plan 阶段 `targetAppPackage` 完全信任 AI；如果 AI 给了错的包名，scope 检查后续会拦下来，但用户体验是"开了一次会话，第一步就 OutOfScope"。下一轮可以加"`PackageManagerBridge` 校验包名实际存在 + 弹窗里允许用户改"。
 - 没做"取消运行中 session"的 UI；用户当前只能停掉语音监听服务来强制中断（`scope.cancel()` 会让 `coroutineScope` 抛出 CancellationException → 走到 `AiError` 分支）。下一轮加一个"中止 agent"按钮。
@@ -532,7 +542,7 @@ A11y 模式下 `currentService` 不是 `ShizukuAutomatorService.Stub` 而是 `A1
 
 #### 实施顺序
 
-1. AIDL 加方法（aidoc/05 §7 兼容策略）
+1. AIDL 加方法（aidoc/05 §4「AIDL 契约」 + aidoc/09 §7「修改 AIDL 契约」兼容策略）
 2. `AutomatorService` interface 加默认方法
 3. `ShizukuAutomatorService` / `A11yAutomatorService` 各自实现（共用一套压缩逻辑）
 4. 主进程 `ScreenSnapshotProvider` 改走 RPC
