@@ -49,6 +49,30 @@
 | **`xtsk://`** | 任务深链 scheme |
 | **ssl 模块** | **命名容易误导**：它是 AES-CBC/PKCS7 JNI 加解密，用于 API / Premium 数据保护，**不是 TLS** |
 
+## AI 相关术语（2026-05-09 起）
+
+| 术语 | 含义 |
+|------|------|
+| **AI agent loop** | `AiAgentSession.runLoop`：抓快照 → AI 决策 → 执行单步 → 写 history → 下一轮，最多步数 / 时长 / scope 边界（详见 `14` / `16` / `18`） |
+| **`AiAgentAction`** | sealed class：LaunchApp / Click / LongClick / SetText / Wait / Scroll / GlobalBack / GlobalHome / Done / GiveUp / Unknown |
+| **`AiUiTarget`** | AI 描述"要操作哪个节点"用的多字段 AND 定位条件（viewId / textEquals / textContains / contentDesc / className + matchIndex），由本地代码在执行瞬间用最新真实节点树二次定位 |
+| **`AiUiSnapshot`** | 给 AI 看的当前屏幕子集（压缩后的扁平节点列表 + 元数据） |
+| **`AiAgentTaskAssembler`** | 把单步动作 + 真节点组装成一棵跟 inspector「挑节点 → 自动点击」等价的最小临时 XTask（在执行端 :service 进程跑） |
+| **`AiActionToTask`** | 把 `AiAgentAction` 翻译成最小临时单步 XTask（用于 LaunchApp / GlobalBack / GlobalHome 等不依赖节点匹配的动作） |
+| **ReAct 三段** | observation / last_action_review / reflection 三段强制思考，再写 action（详见 `18`） |
+| **stuck detection** | 连续 N 步无进展时强制 AI 在 reflection 里宣告"困住了"+ 给完全不同方向，超硬限直接 GiveUp |
+| **silent-fail** | 步骤报 ok 但屏幕签名前后一致（节点选错 / 不响应 / 占位文本）；二次拉黑机制写入 `deadTargetsByPkg` |
+| **outcome** | 一次会话的最终结果 sealed class：Completed / GivenUp / LimitExceeded / OutOfScope / PermissionDenied / AiError / Cancelled / ServiceNotConnected |
+| **AI 经验本 / Experience Book** | 跨 session 长期记忆，自然语言 markdown + 结构化 JSON 嵌块写到 `${filesDir}/ai_agent_experience/` + `index.json`（2026-05-13） |
+| **`AiAgentExperienceBook`** | 经验本单例门面：`recordSession` / `recall` / `queryAll` / `loadEntry` / `convertToDraft` / `delete` / `clearAll` / `usageBytes` |
+| **`ExperienceFile` / `ExperienceStep` / `ExperienceIndex`** | 经验本结构化 DTO，schemaVersion=1，内嵌 ` ```json ``` ` 块到 txt 文件尾 |
+| **`ExperienceRecaller`** | 召回打分公式 `(pkg_match*3 + keyword_overlap + outcome_failure_bonus) * age_decay`，半衰期 21 天 |
+| **`ExperienceRedactor`** | 隐私脱敏：手机/邮箱/身份证/卡号正则；set_text 实际内容**永不写盘** |
+| **`ExperienceToTaskConverter`** | 经验本→草稿生成的纯工具类，**完全由用户在 UI 主动点击触发**，跟 agent 自身解耦 |
+| **三模块解耦架构** | agent 执行 / 经验本 / 草稿生成 三模块通过经验本作为单向数据中介解耦；详见 `20-experience-book-design.md` §0 |
+| **`ai_agent_outcome` channel** | session 结束后发独立通知的 NotificationChannel（IMPORTANCE_DEFAULT），跟前台常驻通知 `voice_command` 完全分离 |
+| **「人工智能」Tab** | 底部导航第 4 个 Tab（`page_title_ai`），原"语音"页 2026-05-13 重塑 |
+
 ## 常用路径速记
 
 | 路径 | 含义 |

@@ -113,23 +113,31 @@ App 运行时会涉及**最多两个进程**：
 
 | 包（`top.xjunz.tasker.*`） | 作用 |
 |-----------|------|
-| `App.kt` / `Preferences.kt` | Application、全局偏好 |
+| `App.kt` / `Preferences.kt` | Application、全局偏好（含 AI agent / 经验本三键） |
 | `annotation` | `@Local` / `@Privileged` / `@Anywhere` / `@FieldOrder` |
 | `api` | Ktor HTTP 客户端、后端 DTO、加密头 |
 | `autostart` | `AutoStarter` 开机广播 + Shizuku 管理器控制 |
 | `bridge` | 对 Android 系统 & hidden API 的统一封装（见 `05`） |
 | `ktx` | Kotlin 扩展（`IBinder.kt` 等） |
 | `premium` | `PremiumMixin`（加密文件加载、`ensurePremium`） |
-| `service` | `AutomatorService` 抽象 + Shizuku / A11y 具体实现 |
+| `service` | `AutomatorService` 抽象 + Shizuku / A11y 具体实现 + `AgentActionDispatcher` |
 | `service.controller` | `ServiceController` 抽象 + 两个模式的控制器 |
 | `task.applet` | 具体 Applet 实现（action / criterion / flow / value / option） |
 | `task.editor` | 非 UI 编辑辅助（`AppletReferenceEditor`） |
 | `task.event` | 事件分发器（`A11yEventDispatcher`、`PollEventDispatcher`、`NetworkEventDispatcher`、`ClipboardEventDispatcher`） |
 | `task.gesture` | 手势录制 / 回放数据结构 |
 | `task.inspector` | 悬浮检查器状态 + 悬浮窗 overlay |
+| `task.inspector.shared` | inspector + AI agent 共享：`UiTreeQuery` / `NodeCriteriaExtractor` / `NodeToActionAssembler` / `AiUiTargetExtractor` / `AiAgentTaskAssembler` / `AiNodeTreeCompactor` |
 | `task.runtime` | `LocalTaskManager` / `PrivilegedTaskManager` / 调度器 |
 | `task.storage` | `TaskStorage`（`.xtsk` 读写、迁移、验校验和） |
-| `ui.*` | 全 UI 层（见 `07-ui-architecture.md`） |
+| `ai` | AI 数据模型 / 门禁 / 审计 / Provider（OpenAI 兼容 HTTP）；详见 `14-ai-integration.md` |
+| `ai.agent` | **AI agent loop 核心**：`AiAgentSession` / `AiAgentPlanner` / `AiAgentExecutor` / `AiAgentAction` / `AiUiSnapshot` / `AiUiTarget` / `ScreenSnapshotProvider` / `AiTaskScope` + `overlay/` 决策面板 |
+| `ai.agent.experience` | **经验本**（2026-05-13）：`AiAgentExperienceBook` 单例 + `ExperienceModel/Writer/Reader/Recaller/Redactor/LearningExtractor/ToTaskConverter`；详见 `20-experience-book-design.md` |
+| `ai.translator` | `AiActionToTask`：把单个 `AiAgentAction` 翻译成最小临时 XTask（agent 单步派发） |
+| `ai.draft` | `AiTaskDraftConverter`：把 `VoiceAiInterpretation.CreateTaskDraft` 翻译成草稿 task（用户文字命令路径，跟 agent 解耦） |
+| `ai.capability` | `AiTaskCapability` / `AiTaskCapabilityCatalog`：草稿能力清单（launch_app / wait_seconds / toast 三类） |
+| `voice` | `VoiceCommandService`（前台 service，含 ASR + agent 调度 + 通知 + 经验本写入接入） + `VoiceCommandParser` |
+| `ui.*` | 全 UI 层（见 `07-ui-architecture.md`），含 `ui/voice/`「人工智能」页 + `ui/voice/experience/` 经验本对话框 |
 | `util` | 杂项工具 |
 
 ## 5. 选择切入点的速查表

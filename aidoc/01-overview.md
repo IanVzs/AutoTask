@@ -33,12 +33,18 @@
 | **付费 / 白嫖版切换** | `PremiumMixin`，当前源码中 `upForGrabs = true` 时可免费使用 premium 功能 |
 | **主题 & 国际化** | Material 3；**目前 `res/values*` 仅 `values` + `values-night`**（单语中文，无 i18n 资源目录） |
 | **开机自启** | `AutoStarter` 广播 + Shizuku Manager 自启链路，付费项 |
+| **AI 驱动「人工智能」页**（2026-05-13） | 底栏第 4 个 Tab；语音 + 文字命令 + AI agent 自动多步执行 + 经验本（跨 session 长期记忆，自动写盘 / 召回回喂 prompt / 一键转任务草稿） + 会话结果通知 |
 
 ## 当前阶段
 
-截至 2026-05-08，项目已经完成 2.0 语音控制中心、构建体验、CI、lint error 修复、版权归属修正和开发文档整理。当前代码适合作为 **AI 接入前基线**。
+截至 2026-05-13，已经在 2.0 语音控制中心、构建体验、CI、lint error 修复、版权归属修正、开发文档整理之上**完整实现 AI 接入第二阶段**：
 
-下一阶段目标是引入 AI 驱动能力：让 AI 从自然语言理解、任务草稿生成和运行诊断开始，逐步成长为分级授权下的自动化代理和智能运行时节点。AI 应深度复用现有 `XTask` / `Applet` / `AutomatorService` 执行管道，通过行动计划、风险评估、权限策略和审计记录扩大能力边界，而不是旁路执行。设计草案见 `14-ai-integration.md`。
+- **AI agent loop**（2026-05-09）：`AiAgentSession` ReAct 三段思考、屏幕感知（`ScreenSnapshotProvider` + `AiNodeTreeCompactor`）、UI 操作执行（复用 Applet 管道）、决策面板（每步可选用户介入）、stuck 检测、失败策略记忆。详见 `14-ai-integration.md` / `16-ai-inspector-capability.md` / `18-ai-agent-thinking-upgrade.md` / `19-feature-audit.md`。
+- **agent / 经验本 / 草稿生成 三模块解耦架构**（2026-05-13）：agent 执行（`AiAgentSession`）每步**自动**沉淀到经验本（`ai/agent/experience/`，自然语言 markdown + 结构化 JSON 嵌块写到 `${filesDir}/ai_agent_experience/`）；经验本（`AiAgentExperienceBook`）作纯数据层提供召回 / 浏览 / 转草稿三出口；草稿生成（`ExperienceToTaskConverter`）由用户在「人工智能」页 → 经验本对话框主动点击触发，把成功经验里 step 序列翻译成 `XTask` 弹 `FlowEditor`。详见 `20-experience-book-design.md`。
+- **会话结果通知**：独立 channel `ai_agent_outcome`（IMPORTANCE_DEFAULT），不论成功 / 失败 / 中止 / 越权 / 服务未连接 / AI 错误都发独立通知。
+- 「语音」Tab 重塑为「人工智能」（图标改为 `ic_baseline_auto_awesome_24`）；页面顶部加经验本入口卡片。
+
+下一阶段聚焦 follow-up：prompt 优化 / token 节流 / 经验本配置 UI / 转草稿后 set_text 占位文本 UX / `inspector picker V2` 等（详见 `13-todo.md` 2.x）。
 
 ## 运行模式对比
 
@@ -74,13 +80,14 @@
 | DataBinding / ViewBinding / AIDL | 全部开启 |
 | Java / Kotlin 目标 | Java 18 |
 
-**代码规模（当前快照）**：
+**代码规模**（具体数字会随开发漂移；最近一次有意义统计是 2026-05-08，之后 AI agent + 经验本累计加了约 20 个 .kt + 5 个 layout）：
 
-- 总 `.kt` 文件：**约 330** 个
-- 总 Kotlin 代码行：**约 31,900** 行
-- `app` 模块 `.kt`：**244** 个 / 约 38,000 行
-- AIDL 文件：**4** 个（见 `05-services-and-ipc.md`）
-- 布局 XML：**74** 个
+- 总 `.kt` 文件：~350+ 个
+- `app` 模块 `.kt`：~260+ 个
+- AIDL 文件：4 个（见 `05-services-and-ipc.md`）
+- 布局 XML：~79 个
+
+具体数以 `find . -name '*.kt' | wc -l` 实测为准。
 
 ## 模块一览（详见 `02-architecture.md`）
 

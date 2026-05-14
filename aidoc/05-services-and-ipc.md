@@ -95,6 +95,36 @@ AIDL 文件位于 `app/src/main/aidl/top/xjunz/tasker/`：
 1. 两端（App + 特权进程）代码同步编译
 2. 考虑旧版本 App 与新版本 Shizuku 服务共存时的兼容性（通常通过新增方法而非修改签名）
 3. 更新 `03-engine-applet-model.md` / 本文件的 IPC 表
+4. 详细操作流程见 `09-development-guide.md` §7「修改 AIDL 契约」
+
+## 4.1 `VoiceCommandService`（前台 service，不属于 IPC 范畴）
+
+虽然不走 AIDL，但其行为是 AI 链路的入口，跟服务层强相关，列在这里方便查阅。
+路径：`app/src/main/java/top/xjunz/tasker/voice/VoiceCommandService.kt`
+
+### 通知 channel
+
+| Channel ID | Importance | 用途 | 创建时机 |
+|---|---|---|---|
+| `voice_command` | LOW | 前台常驻通知（"语音监听中..."），用户从这里能停服务 | `onCreate` → `createNotificationChannel()` → `startForeground` |
+| `ai_agent_outcome` | DEFAULT | **AI agent 会话结束后的独立结果通知**（成功/失败/中止/越权/服务未连接/AI 错误都发） | `onCreate` → `createAgentOutcomeNotificationChannel()`；每次 outcome 发一条独立通知，ID 在 `[0x611, 0x611+100)` 循环不互相覆盖 |
+
+通知正文：`notifyAgentOutcome(outcome, plan, userGoal)` 拼装 — 标题用 outcome 类型字符串、副标题 `「<userGoal>」+ outcome detail` 截断、BigText 展开含完整目标 + outcome detail + plan stats（在轨/微调/偏轨/未自评计数）；点击打开 `MainActivity` + `setAutoCancel(true)`。
+
+### 经验本接入（2026-05-13）
+
+`onCreate` 里调 `AiAgentExperienceBook.ensureInitialized(this)` 做目录创建 + index.json 加载到内存。
+
+`runAgentFlow(text)` 流程：
+1. `AiAgentPlanner.planSession(text)` 出会话规划
+2. 弹任务级授权对话框（`pendingAgent` LiveData → Fragment 接收）
+3. **召回经验**：`AiAgentExperienceBook.recall(this, userGoal=text, targetApps)` 取 top-N
+4. `AiAgentSession(scope, plan, ..., experiences=recalled).run()` 跑 ReAct loop
+5. `appendOutcomeRecord(outcome, plan)` 写一条 record 到语音页 records 卡片
+6. `notifyAgentOutcome(outcome, plan, userGoal=text)` 发独立通知
+7. `recordOutcomeToExperienceBook(outcome, plan, ...)` **自动**沉淀到经验本
+
+详见 `aidoc/20-experience-book-design.md` §4 接入点 + `aidoc/14-ai-integration.md` §7.1 agent loop。
 
 ## 5. Bridges（`app/src/main/java/top/xjunz/tasker/bridge/`）
 
