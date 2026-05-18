@@ -15,6 +15,7 @@ import top.xjunz.tasker.engine.applet.base.Applet
 import top.xjunz.tasker.ktx.*
 import top.xjunz.tasker.task.applet.option.AppletOptionFactory
 import top.xjunz.tasker.task.inspector.FloatingInspector
+import top.xjunz.tasker.task.inspector.shared.NodeCriteriaExtractor
 import top.xjunz.tasker.ui.base.inlineAdapter
 import top.xjunz.tasker.ui.main.EventCenter
 import top.xjunz.tasker.util.ClickListenerUtil.setNoDoubleClickListener
@@ -27,8 +28,6 @@ class NodeInfoOverlay(inspector: FloatingInspector) :
     FloatingInspectorOverlay<OverlayNodeInfoBinding>(inspector) {
 
     private val uncheckedApplets = mutableSetOf<Applet>()
-
-    private val uiObjectRegistry get() = AppletOptionFactory.uiObjectRegistry
 
     private val allApplets = mutableListOf<Applet>()
 
@@ -60,54 +59,15 @@ class NodeInfoOverlay(inspector: FloatingInspector) :
         }
     }
 
+    /**
+     * 抽取 Criterion 候选并初始化"哪些默认未勾选"。具体逻辑已经搬到公共
+     * [NodeCriteriaExtractor]，这里只做 ViewModel 层的状态写入。
+     * AI agent 走 `AiUiTargetExtractor` / `NodeCriteriaExtractor` 复用同一份能力。
+     */
     private fun collectProperties() {
-        val node = vm.highlightNode.require().source
-        if (node.className != null)
-            allApplets.add(uiObjectRegistry.isType.yieldWithFirstValue(node.className))
-
-        if (node.viewIdResourceName != null)
-            allApplets.add(uiObjectRegistry.withId.yieldWithFirstValue(node.viewIdResourceName))
-
-        if (node.text != null)
-            allApplets.add(uiObjectRegistry.textEquals.yieldWithFirstValue(node.text))
-
-        if (node.contentDescription != null)
-            allApplets.add(uiObjectRegistry.contentDesc.yieldWithFirstValue(node.contentDescription))
-
-        if (node.isClickable)
-            allApplets.add(uiObjectRegistry.isClickable.yield())
-
-        if (node.isLongClickable)
-            allApplets.add(uiObjectRegistry.isLongClickable.yield())
-
-        if (!node.isEnabled)
-            allApplets.add(uiObjectRegistry.isEnabled.yieldCriterion(true))
-
-        if (node.isCheckable)
-            allApplets.add(uiObjectRegistry.isCheckable.yield())
-
-        @Suppress("DEPRECATION")
-        if (node.isChecked || node.isCheckable)
-            allApplets.add(uiObjectRegistry.isChecked.yield())
-
-        if (node.isEditable)
-            allApplets.add(uiObjectRegistry.isEditable.yield())
-
-        allApplets.add(uiObjectRegistry.isSelected.yieldCriterion(!node.isSelected))
-        if (!node.isSelected)
-            uncheckedApplets.add(allApplets.last())
-
-        allApplets.add(uiObjectRegistry.isScrollable.yieldCriterion(!node.isScrollable))
-        if (!node.isScrollable) {
-            uncheckedApplets.add(allApplets.last())
-        }
-
-        allApplets.add(
-            uiObjectRegistry.childCount.yieldWithFirstValue(
-                listOf(node.childCount, node.childCount)
-            )
-        )
-        uncheckedApplets.add(allApplets.last())
+        val result = NodeCriteriaExtractor.extract(vm.highlightNode.require().source)
+        allApplets.addAll(result.criteria)
+        result.defaultUncheckedIndices.forEach { uncheckedApplets.add(allApplets[it]) }
     }
 
     @SuppressLint("NotifyDataSetChanged")

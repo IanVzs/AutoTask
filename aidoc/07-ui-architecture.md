@@ -39,17 +39,17 @@
 | `res/layout/activity_main.xml` | 只放主框架：`ViewPager2`、顶栏、添加任务 FAB、`BottomNavigationView`。不要在这里新增某个 Tab 的业务 UI。 |
 | `res/menu/task_bottom_bar.xml` | 声明底部导航项，菜单顺序必须和 `MainActivity.viewPagerAdapter.createFragment(position)` 的 position 顺序一致。 |
 | `ui/main/MainActivity.kt` | 只负责一级页面映射、底部导航与 `ViewPager2` 双向同步、AppBar lift/scroll target、任务页 badge。 |
-| 各 Fragment 自己的 layout | 每个一级页面的真实 UI 放在自己的 `fragment_*.xml` 中，例如语音页是 `fragment_voice_command.xml`。 |
+| 各 Fragment 自己的 layout | 每个一级页面的真实 UI 放在自己的 `fragment_*.xml` 中，例如「人工智能」页是 `fragment_voice_command.xml`（fragment 类与 layout 文件名因历史原因仍是 voice_command，**用户可见标题**已改为「人工智能」）。 |
 
 当前固定映射如下：
 
-| position | bottom item id | Fragment | 布局 |
-|----------|----------------|----------|------|
-| 0 | `item_running_tasks` | `EnabledTaskFragment` | `fragment_task_showcase.xml` |
-| 1 | `item_resident_tasks` | `ResidentTaskFragment` | `fragment_task_showcase.xml` |
-| 2 | `item_oneshot_tasks` | `OneshotTaskFragment` | `fragment_task_showcase.xml` |
-| 3 | `item_voice_command` | `VoiceCommandFragment` | `fragment_voice_command.xml` |
-| 4 | `item_more` | `AboutFragment` | `fragment_about.xml` |
+| position | bottom item id | 用户可见标题 | Fragment 类 | 布局 | 图标 |
+|---|---|---|---|---|---|
+| 0 | `item_running_tasks` | 已启用 | `EnabledTaskFragment` | `fragment_task_showcase.xml` | `ic_baseline_play_arrow_24` |
+| 1 | `item_resident_tasks` | 常驻任务 | `ResidentTaskFragment` | `fragment_task_showcase.xml` | `ic_hourglass_bottom_24px` |
+| 2 | `item_oneshot_tasks` | 单次任务 | `OneshotTaskFragment` | `fragment_task_showcase.xml` | `ic_baseline_send_24` |
+| 3 | `item_voice_command` | **人工智能**（`page_title_ai`） | `VoiceCommandFragment` | `fragment_voice_command.xml` | `ic_baseline_auto_awesome_24` ⭐（2026-05-13 由 `ic_mic_24px` 改） |
+| 4 | `item_more` | 更多 | `AboutFragment` | `fragment_about.xml` | `ic_tune_24px` |
 
 修改一级导航时必须同步检查：
 
@@ -84,9 +84,24 @@
 - "反馈 & 交流"入口名称、"加群"、"邮件"这些菜单文案是**Android 资源配置**：改 `res/values/strings.xml` 的 `feedback_and_communicate`、`feedback_group`、`feedback_email`。改完需要重新打包安装。
 - 菜单里有哪些项是**XML 菜单配置**：改 `res/menu/feedbacks.xml`。如果新增菜单项，还要同步改 `AboutFragment.onOptionClicked()` 中 `MainOption.Feedback` 分支的点击处理。改完需要重新打包安装。
 
-### 2.3 语音指令入口
+### 2.3 「人工智能」页（原"语音"页，2026-05-13 重塑）
 
-语音指令是一个独立底部导航分页，不再放在标题栏按钮或悬浮按钮里。用户进入"语音"页后，点击页面内主按钮启动 `voice/VoiceCommandService` 前台服务；服务会在通知栏常驻，用户可在语音页或通知里的"停止语音监听"关闭。没有做后台热词唤醒，也不会在 App 启动时自动监听。
+底部导航第 4 个 Tab，标题字符串为 `page_title_ai`「人工智能」（早期叫"语音"，对应 `voice_command_short`）。这是**所有 AI 能力的统一入口**：语音命令 + 文字命令 + AI agent 自动多步执行 + AI 经验本浏览。
+
+底层实现仍是 `voice/VoiceCommandService` 前台服务 + `ui/voice/VoiceCommandFragment`（类 / 布局 / 包路径因历史原因没改名）；用户可见标题与图标在 `task_bottom_bar.xml` 与 `fragment_voice_command.xml` 中已切换。
+
+页面卡片自上而下：
+1. **状态卡**（`card_status`）：监听状态 + 启停按钮；idle 状态图标用 `ic_baseline_auto_awesome_24` ⭐ 与 Tab 主题统一，listening 时切回 `ic_mic_24px`。
+2. **AI 经验本卡**（`card_experience_book`，2026-05-13 新增）：右侧 chevron 提示可点；副标题"查看 AI 历史执行记录，把成功经验一键转成任务草稿"；底部"已记录 N 条 · 占用 NN KB"实时刷新。点击 → `AiExperienceBookDialog`。
+3. **文字命令卡**（`card_text_command`）：输入框 + 发送按钮；提交后走 `VoiceCommandService.ACTION_HANDLE_TEXT`，省去 ASR 步骤。
+4. **最近一次命令卡**（`card_latest`）。
+5. **执行记录列表**（`rv_records` + `item_voice_command_record.xml`）。
+
+经验本相关 UI 类：
+- `ui/voice/experience/AiExperienceBookDialog.kt` + `dialog_ai_experience_book.xml` + `item_ai_experience_entry.xml`：BottomSheet 列表 + 顶部用量 + 清空按钮；条目带"转任务草稿"+"查看完整记录"双按钮 + 长按删除。
+- `ui/voice/experience/AiExperienceDetailDialog.kt` + `dialog_ai_experience_detail.xml`：全屏 monospace 可滚可复制展示原 txt 全文（markdown + 末尾 JSON 嵌块）。
+
+服务自身行为：服务会在通知栏常驻（channel `voice_command`），用户可在页面或通知里的"停止语音监听"关闭。没有做后台热词唤醒，也不会在 App 启动时自动监听。**第二个独立 channel**：`ai_agent_outcome`（IMPORTANCE_DEFAULT），agent 会话结束（不论成败 / 越权 / 取消）发独立通知告知用户结果，BigText 含完整目标 + outcome detail + plan stats，点击打开 `MainActivity`。
 
 入口与权限：
 
@@ -104,6 +119,16 @@
 - 任务匹配：`VoiceCommandService.findTask()` 先按任务标题精确匹配，再做去空白/标点后的包含匹配；匹配到多个任务时不会执行，会提示用户说完整任务名。
 - 任务执行：当前只支持一次性任务（`XTask.TYPE_ONESHOT`）。匹配到一次性任务后复用现有入口：`LocalTaskManager.addOneshotTaskIfAbsent(task)` + `currentService.scheduleOneshotTask(...)`。匹配到常驻任务时只提示，不直接启用或运行。
 - 结果展示：`VoiceCommandService.uiState` 输出 `VoiceCommandUiState` 和倒序 `VoiceCommandRecord`；`VoiceCommandFragment` 展示当前状态、最近识别文本、解析命令、匹配任务和执行记录。toast 和前台通知仍保留为即时反馈。
+- 文本输入：语音状态卡片下方提供“文字指令”卡片，内含输入框和发送按钮；提交后直接走 `VoiceCommandService.ACTION_HANDLE_TEXT`，省去 ASR 步骤；如果语音服务未运行，会临时启动服务处理文本，处理完成后自动停止。
+
+AI 接入预留：
+
+- 语音页已经具备展示“识别文本、解析命令、匹配任务、执行结果”的状态区域；语音识别文本和手动输入文本都会先尝试 `VoiceAiInterpreter`。
+- AI 不响应、欠费、超时、返回格式错误或未启用时，不中断原功能，继续回退到 `VoiceCommandParser.parseRunTaskQuery()` 的现有规则解析。
+- AI 不应直接绕过 `VoiceCommandService` 执行系统动作。建议先让 AI 输出结构化意图，再由本地代码匹配现有任务或生成任务草稿。
+- 任务草稿必须进入编辑器预览和用户确认，不要让 AI 在后台直接保存或运行新任务。
+- 详细设计见 `14-ai-integration.md`。
+- AI Provider 配置入口当前放在"更多"页的"AI 驱动"选项，保存 AI 开关、OpenAI-compatible Base URL、API Key、模型名和高级参数；默认使用 DeepSeek 兼容接口。这些配置只建立模型服务入口，不代表 AI 可以绕过行动计划和授权门禁。
 
 阿里云 ASR 的 `AppKey` 与 `Token` 获取：
 
@@ -123,7 +148,7 @@
 - 改匹配策略 / 支持常驻任务：`voice/VoiceCommandService.kt` 的 `findTask()`、`launchTask()`。
 - 改状态或记录展示：`VoiceCommandUiState`、`VoiceCommandRecord`、`ui/voice/VoiceCommandFragment.kt`、`res/layout/fragment_voice_command.xml`、`res/layout/item_voice_command_record.xml`。
 - 改 AppKey / AccessKey / Token 保存位置或配置项说明：`Preferences.kt`、`MainOption.kt`、`AboutFragment.kt`、`res/values/strings.xml`。
-- 改语音 Tab 入口或图标：`res/menu/task_bottom_bar.xml`、`ui/main/MainActivity.kt` 的 position 映射、`res/drawable/ic_mic_24px.xml`。不要把语音入口重新放回 `activity_main.xml` 的顶栏或 FAB。
+- 改「人工智能」Tab 入口或图标：`res/menu/task_bottom_bar.xml`（item title 用 `page_title_ai`、icon 用 `ic_baseline_auto_awesome_24`）、`ui/main/MainActivity.kt` 的 position 映射、相关 drawable（idle 用 `ic_baseline_auto_awesome_24`、listening 时 `VoiceCommandFragment.iconRes` 切回 `ic_mic_24px`）。不要把入口重新放回 `activity_main.xml` 的顶栏或 FAB。
 - 改通知标题、权限提示、执行提示：`res/values/strings.xml` 中 `voice_command*` 和 `format_voice_command_*` 字符串。
 
 ## 3. 任务编辑器（`ui/task/editor/`）

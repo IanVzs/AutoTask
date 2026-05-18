@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2026 xjunz. All rights reserved.
+ * Copyright (c) 2026 IanVzs. All rights reserved.
  */
 
 package top.xjunz.tasker.voice
@@ -34,8 +34,10 @@ import org.json.JSONObject
 import top.xjunz.tasker.Preferences
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-import java.time.Instant
-import java.time.format.DateTimeFormatter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.crypto.Mac
@@ -220,7 +222,7 @@ object AlibabaCloudAsrClient {
             "SignatureMethod" to "HMAC-SHA1",
             "SignatureNonce" to UUID.randomUUID().toString(),
             "SignatureVersion" to "1.0",
-            "Timestamp" to DateTimeFormatter.ISO_INSTANT.format(Instant.now()),
+            "Timestamp" to iso8601UtcNow(),
             "Version" to "2019-02-28"
         )
         val canonicalizedQuery = query.toSortedMap().entries.joinToString("&") {
@@ -259,6 +261,12 @@ object AlibabaCloudAsrClient {
             .replace("+", "%20")
             .replace("*", "%2A")
             .replace("%7E", "~")
+    }
+
+    private fun iso8601UtcNow(): String {
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(Date())
     }
 
     private fun randomHex32(): String {

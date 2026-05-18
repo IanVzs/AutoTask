@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  ~ Copyright (c) 2026 IanVzs. All rights reserved.
+  -->
+
+<layout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <com.google.android.material.card.MaterialCardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginVertical="6dp"
+        android:clickable="true"
+        android:focusable="true"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="0dp"
+        app:strokeColor="?colorOutlineVariant"
+        app:strokeWidth="1dp">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="14dp">
+
+            <ImageView
+                android:id="@+id/iv_outcome"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:contentDescription="@string/ai_experience_book_dialog_title"
+                app:layout_constraintBottom_toBottomOf="@+id/tv_goal"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="@+id/tv_goal"
+                tools:src="@drawable/ic_check_circle_24px" />
+
+            <TextView
+                android:id="@+id/tv_goal"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:textAppearance="@style/TextAppearance.Material3.TitleSmall"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@+id/iv_outcome"
+                app:layout_constraintTop_toTopOf="parent"
+                tools:text="在抖音里搜索下饭综艺" />
+
+            <TextView
+                android:id="@+id/tv_meta"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:alpha=".82"
+                android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="@+id/tv_goal"
+                app:layout_constraintTop_toBottomOf="@+id/tv_goal"
+                tools:text="抖音 (com.ss.android.ugc.aweme) · 8 步 · 32 秒" />
+
+            <TextView
+                android:id="@+id/tv_outcome_label"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textAppearance="@style/TextAppearance.Material3.LabelSmall"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="@+id/tv_goal"
+                app:layout_constraintTop_toBottomOf="@+id/tv_meta"
+                tools:text="AI agent 已完成任务"
+                tools:textColor="@android:color/holo_green_dark" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_to_draft"
+                style="@style/Widget.Material3.Button.TonalButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:layout_marginEnd="8dp"
+                android:insetTop="2dp"
+                android:insetBottom="2dp"
+                android:text="@string/ai_experience_book_to_draft"
+                app:icon="@drawable/ic_baseline_send_24"
+                app:layout_constraintEnd_toStartOf="@+id/btn_view"
+                app:layout_constraintTop_toBottomOf="@+id/tv_outcome_label" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_view"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:insetTop="2dp"
+                android:insetBottom="2dp"
+                android:text="@string/ai_experience_book_view_full"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintTop_toBottomOf="@+id/tv_outcome_label" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </com.google.android.material.card.MaterialCardView>
+</layout>

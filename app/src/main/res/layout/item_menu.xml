@@ -9,6 +9,7 @@
         style="@style/RtlOverlay.Widget.AppCompat.PopupMenuItem"
         android:layout_width="match_parent"
         android:layout_height="?attr/dropdownListPreferredItemHeight"
+        android:baselineAligned="false"
         android:background="?selectableItemBackground">
 
         <!-- Icon will be inserted here. -->

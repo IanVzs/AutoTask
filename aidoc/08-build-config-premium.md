@@ -4,22 +4,28 @@
 
 | 项 | 值 |
 |----|---|
-| Gradle Plugin | `com.android.tools.build:gradle:8.1.2` |
-| Gradle 版本 | 由 wrapper 管理（`gradle/wrapper/gradle-wrapper.properties`） |
-| Kotlin | 1.8.21 |
-| `compileSdk` / `targetSdk` / `minSdk` | 34 / 34 / 24 |
+| Gradle Plugin | `com.android.tools.build:gradle:8.13.0` |
+| Gradle 版本 | 8.13，由 wrapper 管理（`gradle/wrapper/gradle-wrapper.properties`） |
+| Kotlin | 2.2.0 |
+| `compileSdk` / `targetSdk` / `minSdk` | 36.1 / 36 / 24 |
 | Java 目标 | 18（source + target） |
 | `dataBinding` | 开启 |
 | `viewBinding` | 由 DataBinding 覆盖 |
 | `aidl` | 开启 |
 | ABI filters | `x86`, `arm64-v8a`, `x86_64` |
 | App Id | `top.xjunz.tasker` |
-| Version | `2.0.0` / code `200`（由根目录 `gradle.properties` 的 `APP_VERSION_NAME` / `APP_VERSION_CODE` 管理） |
-| 签名 | 全构建共用 `signingConfigs.xjunz`，debug 也用同一套 |
+| Version | `2.1.0-alpha.1` / code `210`（由根目录 `gradle.properties` 的 `APP_VERSION_NAME` / `APP_VERSION_CODE` 管理） |
+| 签名 | 可选；配置完整时 debug/release 使用 `signingConfigs.custom`，否则使用默认 debug 签名或生成未签名 release |
 
-### 1.1 `local.properties`（**必填**）
+### 1.1 `local.properties`（可选，本机配置）
 
-根目录下新建：
+根目录下可新建未提交的 `local.properties`。Android SDK 不在默认位置时配置：
+
+```properties
+sdk.dir=/path/to/Android/Sdk
+```
+
+需要使用自己的签名时再配置：
 
 ```
 storeFile=xxx.jks
@@ -32,7 +38,7 @@ keyPassword=xxx
 # gpr.token=<token with read:packages>
 ```
 
-缺失会报错：`FileInputStream("local.properties")` 在 `build.gradle`（根 + app）都会读。
+`local.properties` 不应提交。仓库级 `gradle.properties` 不应写 `org.gradle.java.home=/your/local/path`，JDK 应通过 `JAVA_HOME`、IDE 或用户级 `~/.gradle/gradle.properties` 配置。
 
 ### 1.2 Build types
 
@@ -143,6 +149,16 @@ debug 构建 `versionName` 自动后缀 `-debug`。
 
 HTTPS 用 `ktor-client-cio`；没有自定义 TrustManager / SSL pinning。
 
+### 8.0 AI Provider 配置
+
+AI Provider 第一版采用 OpenAI-compatible HTTP 接口，不新增固定服务商依赖。配置入口在"更多"页的"AI 驱动"：
+
+- Base URL、API Key、模型名、启用开关、温度、最大输出 tokens、请求超时和语音理解最低置信度保存在 `Preferences`，不写入源码。
+- 请求骨架位于 `ai/provider/OpenAiCompatibleProvider.kt`，默认访问 `<baseUrl>/chat/completions`。
+- API Key 由用户自行提供，可为空以支持本机或内网兼容服务。
+- 当前默认值面向短文本意图理解：Base URL `https://api.deepseek.com`、模型名 `deepseek-chat`、温度 `0.2`、最大输出 `512` tokens、超时 `8000ms`、最低置信度 `0.6`。
+- Provider 只负责模型请求；AI 行动仍必须经过 `AiActionPlan`、`AiActionGate` 和现有任务执行管道。
+
 ### 8.1 更新检查逻辑
 
 更新检查是**手动触发**的：打开设置/关于页里的“版本信息”对话框，点击“检查更新”按钮后，`VersionInfoDialog` 调用 `MainViewModel.checkForUpdates()`。不要在 `MainActivity.onCreate()` 中自动调用 `checkForUpdates()`，否则 App 启动后会在 `app.updateInfo` 返回新版本时立即弹出“检测到新版本！”。
@@ -226,8 +242,9 @@ HTTPS 用 `ktor-client-cio`；没有自定义 TrustManager / SSL pinning。
 
 ## 15. 构建 checklist（新 AI / 新机器）
 
-1. 安装 Android Studio + 对应 SDK（compileSdk 34）
-2. 放置 keystore + 写 `local.properties`
-3. `./gradlew :app:assembleDebug`（首次会下载所有远程依赖）
-4. 如果启用 dProtect，需要去根 `build.gradle` 取消注释 classpath 并在 `local.properties` 填 `gpr.user` / `gpr.token`
-5. 安装时需要同一签名（Shizuku UserService 会校验包名 + 签名）
+1. 安装 JDK 18，并通过 `JAVA_HOME`、IDE 或用户级 Gradle 配置指向该 JDK。
+2. 安装 Android SDK Platform 36 与 Build Tools 36.0.0；SDK 不在默认位置时，在未提交的 `local.properties` 写 `sdk.dir`。
+3. 运行 `make doctor` 检查 JDK、Gradle、SDK 与设备。
+4. 运行 `make debug` 或 `./gradlew :app:assembleDebug` 构建 debug 包（首次会下载远程依赖）。
+5. 需要使用固定签名安装/升级时，在未提交的 `local.properties` 填 `storeFile` / `storePassword` / `keyAlias` / `keyPassword`。
+6. 如果启用 dProtect 私仓依赖，需要在 `local.properties` 填 `gpr.user` / `gpr.token`。

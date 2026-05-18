@@ -209,6 +209,22 @@ Manifest 绑定：
 - 每个任务最多保留若干 snapshot（见 `LocalTaskManager` 的常量），过老会被丢弃
 - DEBUG 构建 `SnapshotObserver` 还会写 `log` 缓冲
 
+### 7.4 跟「AI 经验本」是两回事（容易混淆）
+
+**TaskSnapshot**（本节描述）：
+- 每次任务跑一次生成一份；**纯内存对象**，挂在 `XTask.snapshots` deque 里，最多 10 份
+- App 进程被杀就没了
+- 给"轨迹模式"渲染红/绿标色 + `SnapshotLogDialog` 看日志缓冲用
+- 与所有任务（包括用户手编 task + AI agent 派的临时单步 task）相关
+
+**AI 经验本** `${context.filesDir}/ai_agent_experience/`（详见 `aidoc/20-experience-book-design.md`）：
+- 仅 AI agent 会话级别；每次 `AiAgentSession` 跑完写一份自包含 txt 文件 + 更新 `index.json`
+- **持久化**到磁盘，跨 App 重启可读
+- 给"AI 越用越聪明"用：召回回喂下一次 prompt + UI 浏览历史 + 一键转任务草稿
+- 与单步 TaskSnapshot 完全独立的两套数据通道
+
+修改 task 执行管道时不影响经验本，反之亦然。
+
 ## 8. 暂停 / 恢复
 
 `PauseFor` / `PauseUntilTomorrow` 改变 `XTask.pauseState`，通过 `IOnTaskPauseStateListener.onTaskPauseStateChanged(checksum)` 通知 UI。

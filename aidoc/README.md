@@ -5,6 +5,20 @@
 >
 > 如需给最终用户看的说明，请读根目录的 `README.md`；本目录偏重 **实现层细节**、**模块关系**、**扩展点** 和 **调试切入点**。
 
+## 开工前硬约束（**违反将造成架构债，不可越过**）
+
+任何涉及"读屏 / 执行 UI 动作 / 跨进程能力 / Service / Bridge / Task / AIDL"的改动，**开工前 100% 必读**：
+
+1. `02-architecture.md` §2「进程模型」+ §2.1「进程注解」
+2. `05-services-and-ipc.md` 全部
+3. `03-engine-applet-model.md`（如果要执行 / 序列化任务，必读）
+4. `09-development-guide.md`（特别是 §9 AI 警告 / §7 修改 AIDL 兼容策略）
+5. **grep `@Privileged` / `@Local` / `@Anywhere`**，确认你引用的每个方法在哪个进程能跑
+
+完成后**在 todo / PR 描述里加一条"已对照 aidoc 02 §2 + 05 + 09"**才能动键盘。
+
+历史案例：2026-05-09 给 AI agent 接屏幕感知能力时跳过这一步，直接在主进程调 `currentService.uiAutomatorBridge`，结果 Shizuku 模式触发 `ensurePrivilegedProcess()` 抛异常，整个 agent 链路对 Shizuku 用户根本不工作。复盘见 `16-ai-inspector-capability.md` §13.8。
+
 ## 使用指引（AI agent 快速上手）
 
 1. 先看 `01-overview.md` 明确项目身份与功能边界。
@@ -18,6 +32,11 @@
 9. 排查已知坑点：`10-troubleshooting.md`。
 10. 术语与简写：`11-glossary.md`。
 11. 发版说明：`12-release-notes.md`。
+12. 尚未完成的工程优化：`13-todo.md`。
+13. AI 接入设计草案：`14-ai-integration.md`。
+14. AI 接入工作纪要：`15-ai-working-notes.md`。
+15. AI 屏幕感知与 Inspector 接入（第二阶段核心能力）：`16-ai-inspector-capability.md`。
+16. AI agent 经验本（跨 session 长期记忆）+ 经验→草稿生成：`20-experience-book-design.md`（**已实现**，2026-05-13）。
 
 ## 文件索引
 
@@ -35,6 +54,14 @@
 | [`10-troubleshooting.md`](10-troubleshooting.md) | 已知坑点、常见 bug、排查入口 |
 | [`11-glossary.md`](11-glossary.md) | 术语表 |
 | [`12-release-notes.md`](12-release-notes.md) | 发版说明、版本重点与验证记录 |
+| [`13-todo.md`](13-todo.md) | 尚未完成的工程优化待办 |
+| [`14-ai-integration.md`](14-ai-integration.md) | AI 接入设计草案、架构原则、MVP 路线、第二阶段屏幕感知里程碑 |
+| [`15-ai-working-notes.md`](15-ai-working-notes.md) | AI 接入沟通纪要、方案演进理由、下一步锚点（含屏幕感知决议） |
+| [`16-ai-inspector-capability.md`](16-ai-inspector-capability.md) | AI 屏幕感知专项设计：复用 Floating Inspector 能力让 AI 看见控件、生成可执行 UI 操作 |
+| [`17-inspector-vs-agent-pathway-audit.md`](17-inspector-vs-agent-pathway-audit.md) | inspector 与 agent 执行路径对照审计 |
+| [`18-ai-agent-thinking-upgrade.md`](18-ai-agent-thinking-upgrade.md) | agent ReAct 三段思考升级与 stuck detection / 失败策略记忆设计 |
+| [`19-feature-audit.md`](19-feature-audit.md) | agent 功能现状与已发现 bug 的根因 / 方案审计 |
+| [`20-experience-book-design.md`](20-experience-book-design.md) | **agent 经验本**（跨 session 长期记忆）+ **经验本→草稿生成**（解耦三模块：agent 执行 / 经验本沉淀 / 草稿翻译，**已实现** 2026-05-13） |
 
 ## 重要约定
 
@@ -53,6 +80,9 @@
 - 引入 **新依赖库** ⇒ 更新 `08-build-config-premium.md`。
 - 改动 **反馈 & 交流** 的邮箱、QQ群、邮件模板或菜单入口 ⇒ 更新 `07-ui-architecture.md` 的"关于页与反馈交流"章节。
 - 改动 **语音指令** 的入口、AppKey / AccessKey / Token 配置、权限、识别服务、匹配策略或执行规则 ⇒ 更新 `07-ui-architecture.md` 的"语音指令入口"章节。
+- 引入 **AI Provider / Agent / Intent / 任务草稿生成** ⇒ 更新 `14-ai-integration.md`；如果设计取舍、方案转向或工作顺序发生变化，同步更新 `15-ai-working-notes.md`；并同步 `01` / `02` / `07` / `08` / `09` 中受影响章节。
+- 改动 **AI 屏幕感知 / Inspector 复用 / `AiUiSnapshot` / `AiUiTarget` / 节点压缩策略 / `AiCapability.InspectScreen` 等屏幕相关能力** ⇒ **必须** 同步 `16-ai-inspector-capability.md`；如该改动影响第二阶段 Phase 2.A/2.B/2.C 划分，同时回写 `13-todo.md` 与 `14-ai-integration.md` §7.1。
+- 改动 **AI agent 经验本 / 长期记忆 / `ai/agent/experience/` 相关代码** ⇒ 同步 `20-experience-book-design.md`，落地后还要在 `13-todo.md` 把对应 phase 标记完成。
 - 发布新版本或调整版本号 ⇒ 更新 `12-release-notes.md` 与 `01-overview.md` / `08-build-config-premium.md` 的版本信息。
 - 发现 **新坑点 / 复现 bug** ⇒ 进 `10-troubleshooting.md` 积累。
 

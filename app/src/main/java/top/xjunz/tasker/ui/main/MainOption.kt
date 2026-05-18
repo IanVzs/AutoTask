@@ -72,6 +72,15 @@ sealed class MainOption(
             AsrServiceType.titleOf(Preferences.speechRecognitionService)
         })
 
+    object AiConfig :
+        MainOption(R.string.ai_config, R.drawable.ic_tips_and_updates_24dp, desc = {
+            if (Preferences.aiEnabled) {
+                Preferences.aiProviderModel?.takeIf { it.isNotBlank() } ?: R.string.enabled
+            } else {
+                R.string.not_is_enabled
+            }
+        })
+
     object Feedback : MainOption(R.string.feedback_and_communicate, R.drawable.baseline_chat_24)
 
     object VersionInfo : MainOption(R.string.version_info, R.drawable.baseline_info_24, desc = {
@@ -96,6 +105,7 @@ sealed class MainOption(
                 WakeLock,
                 NightMode,
                 VoiceRecognitionConfig,
+                AiConfig,
                 Feedback,
                 VersionInfo,
                 About
@@ -107,6 +117,7 @@ sealed class MainOption(
                 AutoStart,
                 NightMode,
                 VoiceRecognitionConfig,
+                AiConfig,
                 Feedback,
                 VersionInfo,
                 About

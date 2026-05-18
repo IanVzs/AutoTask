@@ -77,31 +77,42 @@ class TaskListDialog : BaseBottomSheetDialog<DialogTaskListBinding>() {
 
     private val viewModel by viewModels<InnerViewModel>()
 
-    private val adapter: Adapter<*> by lazy {
-        inlineAdapter(viewModel.taskList.require(), ItemTaskListBinding::class.java, {
+    /**
+     * 当前已 attach 的 adapter；observe 到 [viewModel.taskList] 替换成新 list 时
+     * 重建赋值。
+     *
+     * **不能用 `by lazy` 缓存**：[inlineAdapter] 内部 closure 会把当时传入的
+     * `viewModel.taskList.require()` 引用永久 capture；后续 `viewModel.taskList.value =
+     * newList`（loadPresetTasks / loadExampleTasks / setTaskList 都会替换）时，
+     * adapter 内部 data 仍指向旧 list，新内容看不到。改成每次 observe 触发都
+     * 重建 adapter，[onNewTaskAdded] 通知项变更时也通过本字段拿到当前 adapter。
+     */
+    private var currentAdapter: Adapter<*>? = null
+
+    private fun buildAdapter() = inlineAdapter(
+        viewModel.taskList.require(), ItemTaskListBinding::class.java, {
             binding.btnAdd.setNoDoubleClickListener {
                 parentViewModel.requestAddNewTasks.value = listOf(
                     viewModel.taskList.require()[adapterPosition].clone(AppletOptionFactory)
                 )
             }
         }) { binding, _, task ->
-            binding.btnAdd.isEnabled = !TaskStorage.getAllTasks().contains(task)
-            if (binding.btnAdd.isEnabled) {
-                binding.btnAdd.text = R.string._import.text
-            } else {
-                binding.btnAdd.text = R.string.imported.text
-            }
-            binding.tvTaskName.text = task.metadata.title
-            binding.tvTaskDesc.text = if (task.metadata.description.isNullOrEmpty()) {
-                R.string.no_desc_provided.str.foreColored(ColorScheme.textColorDisabled)
-            } else {
-                task.metadata.spannedDescription
-            }
-            if (task.isResident) {
-                binding.ivTaskType.setImageResource(R.drawable.ic_hourglass_bottom_24px)
-            } else if (task.isOneshot) {
-                binding.ivTaskType.setImageResource(R.drawable.ic_baseline_send_24)
-            }
+        binding.btnAdd.isEnabled = !TaskStorage.getAllTasks().contains(task)
+        if (binding.btnAdd.isEnabled) {
+            binding.btnAdd.text = R.string._import.text
+        } else {
+            binding.btnAdd.text = R.string.imported.text
+        }
+        binding.tvTaskName.text = task.metadata.title
+        binding.tvTaskDesc.text = if (task.metadata.description.isNullOrEmpty()) {
+            R.string.no_desc_provided.str.foreColored(ColorScheme.textColorDisabled)
+        } else {
+            task.metadata.spannedDescription
+        }
+        if (task.isResident) {
+            binding.ivTaskType.setImageResource(R.drawable.ic_hourglass_bottom_24px)
+        } else if (task.isOneshot) {
+            binding.ivTaskType.setImageResource(R.drawable.ic_baseline_send_24)
         }
     }
 
@@ -128,12 +139,14 @@ class TaskListDialog : BaseBottomSheetDialog<DialogTaskListBinding>() {
         }
         observe(viewModel.taskList) {
             if (it.isNotEmpty()) {
-                binding.rvTaskList.adapter = adapter
+                val newAdapter = buildAdapter()
+                binding.rvTaskList.adapter = newAdapter
+                currentAdapter = newAdapter
                 binding.tvTitle.append("（${it.size}）")
             }
         }
         observeTransient(parentViewModel.onNewTaskAdded) {
-            adapter.notifyItemChanged(viewModel.taskList.value?.indexOf(it) ?: -1, true)
+            currentAdapter?.notifyItemChanged(viewModel.taskList.value?.indexOf(it) ?: -1, true)
         }
     }
 

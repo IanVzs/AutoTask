@@ -14,13 +14,13 @@ import android.transition.TransitionManager
 import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.WindowInsets
 import android.view.WindowInsets.Side
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
 import androidx.core.os.postDelayed
 import androidx.core.transition.doOnEnd
-import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.doOnPreDraw
 import androidx.core.view.isVisible
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
@@ -88,8 +88,8 @@ class OverlayToastBridge(looper: Looper) {
             gravity = Gravity.CENTER
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 fitInsetsSides = Side.all()
-                fitInsetsTypes = WindowInsetsCompat.Type.systemBars() or
-                        WindowInsetsCompat.Type.displayCutout()
+                fitInsetsTypes = WindowInsets.Type.systemBars() or
+                        WindowInsets.Type.displayCutout()
             }
         }
 

@@ -143,8 +143,15 @@ open class CoroutineUiObject internal constructor(
 
     /**
      * Sets the text content if this object is an editable field.
+     *
+     * @return `true` 当且仅当 `performAction(ACTION_SET_TEXT)` 系统层返回成功；`false` 表示
+     * a11y 调用失败（最常见原因：节点不响应 ACTION_SET_TEXT，例如 React Native / Compose / 微信
+     * 等自绘控件）。**调用方应据此返回值判断是否需要 fallback**，不要默认成功。
+     *
+     * 历史 bug：之前 `Log.w` 之后无返回值，调用方一律按"成功"处理，导致 task callback 撒谎报告
+     * `isSuccessful=true`——AI agent 看到 OK 然后陷入"以为已经输入但屏幕没变化"的死循环。
      */
-    fun setText(source: CharSequence?) {
+    fun setText(source: CharSequence?): Boolean {
         var text = source
 
         // Per framework convention, setText(null) means clearing it
@@ -154,9 +161,11 @@ open class CoroutineUiObject internal constructor(
         // do this for API Level above 19 (exclusive)
         val args = Bundle()
         args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
-        if (!this.source.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+        val ok = this.source.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        if (!ok) {
             Log.w(TAG, "AccessibilityNodeInfo#performAction(ACTION_SET_TEXT) failed")
         }
+        return ok
     }
 
     /**

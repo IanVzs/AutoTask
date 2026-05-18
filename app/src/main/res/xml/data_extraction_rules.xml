@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?><!--
+  ~ Copyright (c) 2026 IanVzs. All rights reserved.
+  -->
+
+<!--
+  Android 12+ (targetSdk >= 31) 的 Auto Backup / D2D Migration 规则。
+
+  默认 allowBackup=true 会把 context.filesDir 和 SharedPreferences 都纳入云端 / 设备迁移备份。
+  以下目录虽然是应用沙箱内的私有数据，但**含可能识别用户行为习惯的信息**，不应离开本机：
+
+  - ai_agent_experience/ — AI agent 经验本：含用户曾让 AI 做过的事（user_goal）、目标 App 包名、
+    操作步骤摘要、UI 节点 viewId 等；虽然 set_text 实际内容已脱敏（仅 hasTextInput=true 占位），
+    且 textEquals/contentDesc 跑过 PII 正则，但整体仍然能反映个人使用画像
+
+  规则参考：https://developer.android.com/guide/topics/data/autobackup#XMLSyntax
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude
+            domain="file"
+            path="ai_agent_experience/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude
+            domain="file"
+            path="ai_agent_experience/" />
+    </device-transfer>
+</data-extraction-rules>
