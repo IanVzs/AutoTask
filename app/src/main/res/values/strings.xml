@@ -690,6 +690,13 @@
     <string name="snapshots">记录</string>
     <string name="width">宽度</string>
     <string name="height">高度</string>
+    <string name="wechat_actions">微信操作</string>
+    <string name="test_wechat_contact">测试微信联系人可达性</string>
+    <string name="wechat_contact_name">微信昵称或微信号</string>
+    <string name="wechat_action_type">操作类型</string>
+    <string name="wechat_message_text">消息内容（发送模式必填）</string>
+    <string name="wechat_action_check_only">仅检查联系人可达</string>
+    <string name="wechat_action_check_and_send">检查并发送消息</string>
     <string name="shizuku_not_installed">未安装Shizuku</string>
     <string name="activate_premium">激活专业版</string>
     <string name="premium_edition">Premium Edition</string>

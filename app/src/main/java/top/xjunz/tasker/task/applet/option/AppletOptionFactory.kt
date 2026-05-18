@@ -25,6 +25,7 @@ import top.xjunz.tasker.task.applet.option.registry.UiObjectActionRegistry
 import top.xjunz.tasker.task.applet.option.registry.UiObjectCriterionRegistry
 import top.xjunz.tasker.task.applet.option.registry.UiObjectFlowRegistry
 import top.xjunz.tasker.task.applet.option.registry.VibrationActionRegistry
+import top.xjunz.tasker.task.applet.option.registry.WeChatActionRegistry
 
 
 /**
@@ -85,6 +86,9 @@ object AppletOptionFactory : AppletFactory {
     private val vibrationActionRegistry =
         VibrationActionRegistry(BootstrapOptionRegistry.ID_VIBRATION_ACTION_REGISTRY)
 
+    val wechatActionRegistry =
+        WeChatActionRegistry(BootstrapOptionRegistry.ID_WECHAT_ACTION_REGISTRY)
+
     val uiObjectFlowRegistry =
         UiObjectFlowRegistry(BootstrapOptionRegistry.ID_UI_OBJECT_FLOW_REGISTRY)
 
@@ -109,6 +113,7 @@ object AppletOptionFactory : AppletFactory {
         shellCmdActionRegistry,
         fileActionRegistry,
         vibrationActionRegistry,
+        wechatActionRegistry,
         /* control */
         uiObjectFlowRegistry,
     )

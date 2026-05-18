@@ -74,7 +74,7 @@ class App : Application() {
     }
 
     fun sharedPrefsOf(name: String): SharedPreferences {
-        return getSharedPreferences(name, MODE_PRIVATE)
+        return getSharedPreferences(name, MODE_MULTI_PROCESS)
     }
 }
 
